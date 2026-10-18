@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "rules": [
+    { "host": "*.example.com", "target": "first.desktop" },
+    { "host": "mail.example.com", "target": "second.desktop" },
+    { "host": "basecamp.com", "target": "chromium.desktop" },
+    { "host": "*.google.com", "target": "chromium.desktop" },
+    { "host": "github.com", "target": "zen.desktop" },
+    { "host": "work.example.org", "target": "webapp" }
+  ]
+}

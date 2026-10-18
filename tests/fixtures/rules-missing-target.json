@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "rules": [
+    { "host": "bad.example.com" },
+    { "host": "good.example.com", "target": "chromium.desktop" }
+  ]
+}

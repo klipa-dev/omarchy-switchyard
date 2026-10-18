@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "rules": [
+    "oops",
+    { "host": "github.com", "target": "zen.desktop" }
+  ]
+}

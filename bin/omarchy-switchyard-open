@@ -1,5 +1,83 @@
 #!/bin/bash
+# shellcheck source-path=SCRIPTDIR
 set -euo pipefail
 
-echo "omarchy-switchyard-open: not implemented yet" >&2
-exit 1
+usage() {
+  cat <<'EOF'
+Usage: omarchy-switchyard-open [--dry-run] [browser-flags...] [url]
+
+The handler the omarchy-switchyard.desktop entry runs with %u. Routes <url>
+to a browser by the rules in
+${XDG_CONFIG_HOME:-$HOME/.config}/omarchy-switchyard/rules.json and launches
+it; not normally run by hand.
+
+  --dry-run                 print the command that would run, launch nothing
+  --private, --incognito,
+  --private-window, --inprivate
+                             open a private/incognito window
+  -h, --help                show this help
+EOF
+}
+
+script_dir=$(dirname "$(readlink -f "$0")")
+# shellcheck source=../lib/router.sh
+source "$script_dir/../lib/router.sh"
+# shellcheck source=../lib/launch.sh
+source "$script_dir/../lib/launch.sh"
+
+url=""
+flags=()
+for arg in "$@"; do
+  case $arg in
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  --dry-run)
+    export SWITCHYARD_DRY_RUN=1
+    ;;
+  --private | --incognito | --private-window | --inprivate)
+    flags+=("--private")
+    ;;
+  -*)
+    flags+=("$arg")
+    ;;
+  *)
+    [[ -z $url ]] && url=$arg
+    ;;
+  esac
+done
+
+config_dir=${XDG_CONFIG_HOME:-$HOME/.config}/omarchy-switchyard
+state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-switchyard
+rules_file="$config_dir/rules.json"
+fallback_file="$config_dir/fallback"
+
+route_err=$(mktemp)
+route=$(switchyard_route "$url" "$rules_file" "$fallback_file" 2>"$route_err") || {
+  cat "$route_err" >&2
+  rm -f "$route_err"
+  exit 1
+}
+route_stderr=$(cat "$route_err")
+rm -f "$route_err"
+[[ -n $route_stderr ]] && printf '%s\n' "$route_stderr" >&2
+
+target=${route%%$'\t'*}
+reason=${route#*$'\t'}
+
+if [[ $route_stderr == *"rules.json is invalid"* ]] && command -v omarchy-notification-send >/dev/null 2>&1; then
+  omarchy-notification-send "Switchyard: rules.json is invalid, opening in $target" || true
+fi
+
+if [[ ${SWITCHYARD_DRY_RUN:-0} != 1 ]]; then
+  mkdir -p "$state_dir"
+  log_file="$state_dir/log"
+  timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  printf '%s\t%s\t%s\t%s\n' "$timestamp" "$url" "$target" "$reason" >>"$log_file"
+  tmp_log=$(mktemp "$state_dir/log.XXXXXX")
+  tail -n 200 "$log_file" >"$tmp_log"
+  mv "$tmp_log" "$log_file"
+fi
+
+switchyard_launch "$target" "$url" "$fallback_file" "${flags[@]}"

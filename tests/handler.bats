@@ -1,0 +1,130 @@
+bats_require_minimum_version 1.5.0
+
+load helpers
+
+setup() {
+  isolate_home
+  handler="$REPO_ROOT/bin/omarchy-switchyard-open"
+}
+
+@test "--help exits 0" {
+  run "$handler" --help
+  [ "$status" -eq 0 ]
+  [[ $output == Usage:* ]]
+
+  run "$handler" -h
+  [ "$status" -eq 0 ]
+}
+
+@test "a matching URL prints the fake browser's exec" {
+  fake_browser zen.desktop
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  cat >"$XDG_CONFIG_HOME/omarchy-switchyard/rules.json" <<'EOF'
+{ "version": 1, "rules": [ { "host": "github.com", "target": "zen.desktop" } ] }
+EOF
+  run "$handler" --dry-run "https://github.com"
+  [ "$status" -eq 0 ]
+  [ "$output" = "setsid uwsm-app -- $HOME/fake-bin/zen.desktop https://github.com" ]
+}
+
+@test "no URL prints the fallback launch without a URL" {
+  fake_browser chromium.desktop
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  echo "chromium.desktop" >"$XDG_CONFIG_HOME/omarchy-switchyard/fallback"
+  run "$handler" --dry-run
+  [ "$status" -eq 0 ]
+  [ "$output" = "setsid uwsm-app -- $HOME/fake-bin/chromium.desktop" ]
+}
+
+@test "--incognito becomes --private-window for a --mozilla fake" {
+  fake_browser zen.desktop --mozilla
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  echo "zen.desktop" >"$XDG_CONFIG_HOME/omarchy-switchyard/fallback"
+  run "$handler" --dry-run --incognito "https://example.com"
+  [ "$status" -eq 0 ]
+  [ "$output" = "setsid uwsm-app -- $HOME/fake-bin/zen.desktop --private-window https://example.com" ]
+}
+
+@test "--incognito stays for a plain fake" {
+  fake_browser chromium.desktop
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  echo "chromium.desktop" >"$XDG_CONFIG_HOME/omarchy-switchyard/fallback"
+  run "$handler" --dry-run --incognito "https://example.com"
+  [ "$status" -eq 0 ]
+  [ "$output" = "setsid uwsm-app -- $HOME/fake-bin/chromium.desktop --incognito https://example.com" ]
+}
+
+@test "a webapp rule with a non-mozilla brave fallback opens brave as the app" {
+  fake_browser brave-browser.desktop
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  echo "brave-browser.desktop" >"$XDG_CONFIG_HOME/omarchy-switchyard/fallback"
+  cat >"$XDG_CONFIG_HOME/omarchy-switchyard/rules.json" <<'EOF'
+{ "version": 1, "rules": [ { "host": "basecamp.com", "target": "webapp" } ] }
+EOF
+  run "$handler" --dry-run --new-window "https://basecamp.com"
+  [ "$status" -eq 0 ]
+  [ "$output" = "setsid uwsm-app -- $HOME/fake-bin/brave-browser.desktop --app=https://basecamp.com" ]
+}
+
+@test "a webapp rule with a non-Chromium fallback opens chromium.desktop as the app" {
+  fake_browser chromium.desktop
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  echo "zen.desktop" >"$XDG_CONFIG_HOME/omarchy-switchyard/fallback"
+  cat >"$XDG_CONFIG_HOME/omarchy-switchyard/rules.json" <<'EOF'
+{ "version": 1, "rules": [ { "host": "basecamp.com", "target": "webapp" } ] }
+EOF
+  run "$handler" --dry-run "https://basecamp.com"
+  [ "$status" -eq 0 ]
+  [ "$output" = "setsid uwsm-app -- $HOME/fake-bin/chromium.desktop --app=https://basecamp.com" ]
+}
+
+@test "an unknown flag passes through" {
+  fake_browser chromium.desktop
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  echo "chromium.desktop" >"$XDG_CONFIG_HOME/omarchy-switchyard/fallback"
+  run "$handler" --dry-run --some-unknown-flag "https://example.com"
+  [ "$status" -eq 0 ]
+  [ "$output" = "setsid uwsm-app -- $HOME/fake-bin/chromium.desktop --some-unknown-flag https://example.com" ]
+}
+
+@test "a real run launches the browser through a uwsm-app stub" {
+  fake_browser chromium.desktop
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  echo "chromium.desktop" >"$XDG_CONFIG_HOME/omarchy-switchyard/fallback"
+
+  stub_dir="$BATS_TEST_TMPDIR/stubbin"
+  mkdir -p "$stub_dir"
+  cat >"$stub_dir/uwsm-app" <<'EOF'
+#!/bin/bash
+shift
+exec "$@"
+EOF
+  chmod +x "$stub_dir/uwsm-app"
+  PATH="$stub_dir:$PATH" run "$handler" "https://example.com"
+  [ "$status" -eq 0 ]
+  [ -f "$HOME/fake-bin/chromium.desktop.args" ]
+  grep -q "https://example.com" "$HOME/fake-bin/chromium.desktop.args"
+}
+
+@test "the log line is written on a non-dry run and absent on a dry run" {
+  fake_browser chromium.desktop
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  echo "chromium.desktop" >"$XDG_CONFIG_HOME/omarchy-switchyard/fallback"
+
+  run "$handler" --dry-run "https://example.com"
+  [ "$status" -eq 0 ]
+  [ ! -f "$XDG_STATE_HOME/omarchy-switchyard/log" ]
+
+  stub_dir="$BATS_TEST_TMPDIR/stubbin"
+  mkdir -p "$stub_dir"
+  cat >"$stub_dir/uwsm-app" <<'EOF'
+#!/bin/bash
+shift
+exec "$@"
+EOF
+  chmod +x "$stub_dir/uwsm-app"
+  PATH="$stub_dir:$PATH" run "$handler" "https://example.com"
+  [ "$status" -eq 0 ]
+  [ -f "$XDG_STATE_HOME/omarchy-switchyard/log" ]
+  grep -q $'\thttps://example.com\tchromium.desktop\tfallback' "$XDG_STATE_HOME/omarchy-switchyard/log"
+}
