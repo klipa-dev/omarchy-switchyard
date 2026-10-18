@@ -13,6 +13,29 @@ isolate_home() {
   unset BROWSER
 }
 
+# seed_default_browser writes a desktop id into mimeapps.list as the
+# current default browser, with a fake desktop entry for it to resolve to,
+# so a test can start from "some other browser is already the default"
+# without calling xdg-settings set (which would need the entry to exist
+# first).
+seed_default_browser() {
+  local desktop_id="$1"
+  cat >"$XDG_CONFIG_HOME/mimeapps.list" <<EOF
+[Default Applications]
+text/html=$desktop_id
+x-scheme-handler/http=$desktop_id
+x-scheme-handler/https=$desktop_id
+EOF
+
+  mkdir -p "$XDG_DATA_HOME/applications"
+  cat >"$XDG_DATA_HOME/applications/$desktop_id" <<EOF
+[Desktop Entry]
+Type=Application
+Name=$desktop_id
+Exec=/bin/true %u
+EOF
+}
+
 # fake_browser <desktop-id> [--mozilla] — writes an executable script to
 # $HOME/fake-bin/<id> (printing MOZ_LOG on --help with --mozilla, a plain
 # usage line otherwise) and a desktop entry

@@ -1,0 +1,194 @@
+#!/bin/bash
+set -euo pipefail
+
+fail() {
+  echo "omarchy-switchyard: $*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'EOF'
+Usage: omarchy-switchyard <command>
+
+Commands:
+  activate [--fallback <desktop-id>]  register Switchyard as the default browser
+  deactivate                          restore the browser that was default before activate
+  status                              show whether Switchyard is active, and recent log lines
+  --help, -h                          show this help
+EOF
+}
+
+script_dir="$(dirname "$(readlink -f "$0")")"
+repo_root="$(dirname "$script_dir")"
+handler="$script_dir/omarchy-switchyard-open"
+template="$repo_root/share/omarchy-switchyard.desktop"
+desktop_id="omarchy-switchyard.desktop"
+config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/omarchy-switchyard"
+apps_dir="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy-switchyard"
+
+xdg_settings() {
+  env -u BROWSER xdg-settings "$@"
+}
+
+# The fallback-browser note on activate, and the Chromium-web-apps warning,
+# use the same Chromium-family desktop-id list omarchy-launch-webapp does
+# (lib/launch.sh's switchyard_webapp_browser, A2, mirrors it too).
+is_chromium_family() {
+  case "$1" in
+    chromium.desktop | google-chrome* | brave* | microsoft-edge* | opera* | vivaldi* | helium*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Same search omarchy-launch-browser uses to resolve a desktop id's Exec;
+# here we only need to know the entry exists, not what it runs.
+desktop_entry_exists() {
+  local id="$1" dir
+  for dir in "$apps_dir" "$HOME/.nix-profile/share/applications" "/usr/share/applications"; do
+    [[ -f "$dir/$id" ]] && return 0
+  done
+  return 1
+}
+
+cmd_activate() {
+  local fallback_arg=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --fallback)
+        [[ $# -ge 2 ]] || fail "--fallback requires a desktop id"
+        fallback_arg="$2"
+        shift 2
+        ;;
+      *)
+        fail "activate: unknown option: $1"
+        ;;
+    esac
+  done
+
+  [[ "$handler" == *[[:space:]]* ]] && fail "handler path contains whitespace: $handler"
+  [[ -x "$handler" ]] || fail "handler is not executable: $handler"
+
+  mkdir -p "$apps_dir"
+  sed "s#__HANDLER__#$handler#" "$template" >"$apps_dir/$desktop_id"
+
+  local current
+  current=$(xdg_settings get default-web-browser || true)
+
+  if [[ -n "$fallback_arg" ]]; then
+    desktop_entry_exists "$fallback_arg" || fail "no desktop entry found for $fallback_arg"
+    mkdir -p "$config_dir"
+    printf '%s\n' "$fallback_arg" >"$config_dir/fallback"
+  elif [[ -n "$current" && "$current" != "$desktop_id" ]]; then
+    mkdir -p "$config_dir"
+    printf '%s\n' "$current" >"$config_dir/fallback"
+  elif [[ -f "$config_dir/fallback" ]]; then
+    : # already recorded; keep it
+  else
+    fail "no fallback browser known; run: omarchy-switchyard activate --fallback <desktop-id>"
+  fi
+
+  xdg_settings set default-web-browser "$desktop_id" || fail "failed to set default browser"
+
+  if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "$apps_dir" || true
+  fi
+
+  local fallback
+  fallback=$(cat "$config_dir/fallback")
+  echo "Switchyard is the default browser; unmatched links open in $fallback"
+
+  if is_chromium_family "$fallback" && [[ "$fallback" != "chromium.desktop" ]]; then
+    echo "Note: while Switchyard is active, Omarchy web apps open in Chromium (not $fallback); see README -> Limitations"
+  fi
+}
+
+cmd_deactivate() {
+  local current
+  current=$(xdg_settings get default-web-browser || true)
+
+  if [[ "$current" == "$desktop_id" ]]; then
+    if [[ -f "$config_dir/fallback" ]]; then
+      local fallback
+      fallback=$(cat "$config_dir/fallback")
+      xdg_settings set default-web-browser "$fallback" || fail "failed to restore default browser"
+      echo "Default browser restored to $fallback"
+    else
+      echo "Switchyard is active but no fallback browser is recorded; default browser left unchanged. Run: omarchy-switchyard activate --fallback <desktop-id>"
+    fi
+  else
+    echo "Switchyard is not active (default browser is $current)"
+  fi
+}
+
+cmd_status() {
+  local current fallback rules_path rules_status log_path n
+
+  current=$(xdg_settings get default-web-browser || true)
+  if [[ "$current" == "$desktop_id" ]]; then
+    echo "active: yes"
+  else
+    echo "active: no"
+  fi
+  echo "default browser: $current"
+
+  if [[ -f "$config_dir/fallback" ]]; then
+    fallback=$(cat "$config_dir/fallback")
+  else
+    fallback="(none)"
+  fi
+  echo "fallback: $fallback"
+
+  rules_path="$config_dir/rules.json"
+  if [[ ! -f "$rules_path" ]]; then
+    rules_status="missing"
+  elif ! jq -e . "$rules_path" >/dev/null 2>&1; then
+    rules_status="invalid JSON"
+  else
+    n=$(jq -e '.rules | if type == "array" then length else null end' "$rules_path" 2>/dev/null) || n=""
+    if [[ -z "$n" || "$n" == "null" ]]; then
+      rules_status="invalid JSON"
+    else
+      rules_status="$n rules"
+    fi
+  fi
+  echo "rules: $rules_path ($rules_status)"
+
+  echo "handler: $handler"
+
+  log_path="$state_dir/log"
+  if [[ -f "$log_path" ]]; then
+    echo "recent:"
+    tail -n 5 "$log_path"
+  fi
+
+  return 0
+}
+
+case "${1:-}" in
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  "")
+    usage >&2
+    exit 1
+    ;;
+  activate)
+    shift
+    cmd_activate "$@"
+    ;;
+  deactivate)
+    shift
+    cmd_deactivate "$@"
+    ;;
+  status)
+    shift
+    cmd_status "$@"
+    ;;
+  *)
+    echo "omarchy-switchyard: unknown command: $1" >&2
+    usage >&2
+    exit 1
+    ;;
+esac

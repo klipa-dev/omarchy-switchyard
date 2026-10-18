@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Switchyard
+Comment=Opens each link in the browser your rules choose
+Exec=__HANDLER__ %u
+Icon=web-browser
+Terminal=false
+NoDisplay=true
+Categories=Network;WebBrowser;
+MimeType=text/html;x-scheme-handler/http;x-scheme-handler/https;x-scheme-handler/about;x-scheme-handler/unknown;

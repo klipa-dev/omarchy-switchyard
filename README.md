@@ -46,6 +46,27 @@ a broken or missing `rules.json` can never lose it; a missing or invalid
 notification if the file is invalid). Every routing decision is appended to
 `~/.local/state/omarchy-switchyard/log` (the last 200 lines).
 
+## Activate
+
+```sh
+omarchy-switchyard activate [--fallback <desktop-id>]   # take over as the default browser
+omarchy-switchyard deactivate                           # restore the previous default browser
+omarchy-switchyard status                               # show whether Switchyard is active
+```
+
+`activate` records your current default browser as the fallback for links
+that match none of your rules, then registers Switchyard as the default
+instead. Run it again with `--fallback <desktop-id>` (for example
+`--fallback firefox.desktop`) to pick a different fallback, or to set one
+when no default browser was recorded yet. `deactivate` restores the
+recorded fallback and leaves it on disk; it never deletes your rules or
+your fallback choice.
+
+Running `omarchy default browser <x>` (or anything else that changes your
+default browser) deactivates Switchyard silently, since Switchyard is no
+longer the one `xdg-settings` points to; `status` shows this as `active:
+no` with the new default browser.
+
 ## Development
 
 ```sh
