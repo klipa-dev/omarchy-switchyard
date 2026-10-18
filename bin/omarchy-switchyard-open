@@ -1,0 +1,5 @@
+#!/bin/bash
+set -euo pipefail
+
+echo "omarchy-switchyard-open: not implemented yet" >&2
+exit 1

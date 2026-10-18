@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "klipa.switchyard",
+  "name": "Switchyard",
+  "version": "0.1.0",
+  "author": "klipa",
+  "license": "MIT",
+  "description": "Routes clicked links to a browser by host rules",
+  "kinds": ["service"],
+  "entryPoints": { "service": "Service.qml" }
+}
