@@ -1,0 +1,7 @@
+# Secrets: never
+.env
+.env.*
+!.env.example
+*.p8
+*.p12
+*.pem
