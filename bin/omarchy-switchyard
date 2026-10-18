@@ -14,6 +14,7 @@ Commands:
   activate [--fallback <desktop-id>]  register Switchyard as the default browser
   deactivate                          restore the browser that was default before activate
   status                              show whether Switchyard is active, and recent log lines
+  open [--dry-run] [flags] <url>      route and launch <url> the way a clicked link would
   --help, -h                          show this help
 EOF
 }
@@ -185,6 +186,10 @@ case "${1:-}" in
   status)
     shift
     cmd_status "$@"
+    ;;
+  open)
+    shift
+    exec "$handler" "$@"
     ;;
   *)
     echo "omarchy-switchyard: unknown command: $1" >&2
