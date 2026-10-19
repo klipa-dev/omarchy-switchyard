@@ -29,7 +29,7 @@ fake_installed_browser() {
   [ "$status" -eq 0 ]
   run jq -e -c '.rules' "$(rules_file)"
   [ "$status" -eq 0 ]
-  [ "$output" = '[{"host":"github.com","target":"zen.desktop"}]' ]
+  [ "$output" = '[{"host":"*.github.com","target":"zen.desktop"}]' ]
 }
 
 @test "add twice with the same host replaces" {
@@ -41,7 +41,7 @@ fake_installed_browser() {
   [ "$status" -eq 0 ]
 
   run jq -c '.rules' "$(rules_file)"
-  [ "$output" = '[{"host":"github.com","target":"chromium.desktop"}]' ]
+  [ "$output" = '[{"host":"*.github.com","target":"chromium.desktop"}]' ]
 }
 
 @test "add appends in order" {
@@ -52,7 +52,7 @@ fake_installed_browser() {
   "$CLI" rules add example.com chromium.desktop
 
   run jq -c '[.rules[].host]' "$(rules_file)"
-  [ "$output" = '["github.com","basecamp.com","example.com"]' ]
+  [ "$output" = '["*.github.com","*.basecamp.com","*.example.com"]' ]
 }
 
 @test "add lowercases the host" {
@@ -61,7 +61,7 @@ fake_installed_browser() {
   "$CLI" rules add GitHub.COM zen.desktop
 
   run jq -r '.rules[0].host' "$(rules_file)"
-  [ "$output" = "github.com" ]
+  [ "$output" = "*.github.com" ]
 }
 
 @test "add rejects a bad host and changes nothing" {
@@ -74,6 +74,132 @@ fake_installed_browser() {
   run "$CLI" rules add "a..com" webapp
   [ "$status" -eq 1 ]
   [ ! -f "$(rules_file)" ]
+}
+
+@test "add rejects localhost, .com, a..b, *. and a host with a space, and changes nothing" {
+  for bad in localhost .com a..b '*.' "exa mple.com"; do
+    run "$CLI" rules add "$bad" webapp
+    [ "$status" -eq 1 ]
+    [ ! -f "$(rules_file)" ]
+  done
+}
+
+@test "youtube.com, www.youtube.com, *.www.youtube.com and a youtube.com URL all save *.youtube.com" {
+  for typed in youtube.com www.youtube.com '*.www.youtube.com' 'HTTPS://WWW.YouTube.com/watch?v=x'; do
+    rm -f "$(rules_file)"
+    run "$CLI" rules add "$typed" webapp
+    [ "$status" -eq 0 ]
+    run jq -r '.rules[0].host' "$(rules_file)"
+    [ "$output" = "*.youtube.com" ]
+  done
+}
+
+@test "rules add prints what it did, and a second line only when the typed host was rewritten" {
+  fake_browser chromium.desktop
+
+  run "$CLI" rules add youtube.com webapp
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "Rule added: *.youtube.com → webapp" ]
+  [ "${lines[1]}" = "Saved as *.youtube.com, which matches youtube.com and all its subdomains." ]
+
+  run "$CLI" rules add '*.youtube.com' webapp
+  [ "$status" -eq 0 ]
+  [ "$output" = "Rule unchanged: *.youtube.com → webapp" ]
+
+  run "$CLI" rules add www.youtube.com chromium.desktop
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "Rule changed: *.youtube.com → chromium.desktop (replaces *.youtube.com → webapp)" ]
+  [ "${lines[1]}" = "Saved as *.youtube.com, which matches youtube.com and all its subdomains." ]
+}
+
+@test "rule unchanged writes nothing" {
+  fake_browser zen.desktop
+  "$CLI" rules add youtube.com zen.desktop
+  local before
+  before=$(cat "$(rules_file)")
+
+  run "$CLI" rules add '*.youtube.com' zen.desktop
+  [ "$status" -eq 0 ]
+  [ "$output" = "Rule unchanged: *.youtube.com → zen.desktop" ]
+  [ "$(cat "$(rules_file)")" = "$before" ]
+}
+
+@test "add over a hand-written bare host with the same target is still a change, not unchanged" {
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  cat >"$(rules_file)" <<'EOF'
+{"version": 1, "rules": [{"host": "youtube.com", "target": "webapp"}]}
+EOF
+
+  run "$CLI" rules add youtube.com webapp
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "Rule changed: *.youtube.com → webapp (replaces youtube.com → webapp)" ]
+  [ "${lines[1]}" = "Saved as *.youtube.com, which matches youtube.com and all its subdomains." ]
+
+  run jq -c '.rules' "$(rules_file)"
+  [ "$output" = '[{"host":"*.youtube.com","target":"webapp"}]' ]
+}
+
+@test "add over a hand-written bare host replaces it in place with the canonical host" {
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  cat >"$(rules_file)" <<'EOF'
+{"version": 1, "rules": [{"host": "youtube.com", "target": "chromium.desktop"}]}
+EOF
+
+  run "$CLI" rules add youtube.com webapp
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "Rule changed: *.youtube.com → webapp (replaces youtube.com → chromium.desktop)" ]
+
+  run jq -c '.rules' "$(rules_file)"
+  [ "$output" = '[{"host":"*.youtube.com","target":"webapp"}]' ]
+}
+
+@test "add over a hand-written www. host rewrites it, even though the target didn't change" {
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  cat >"$(rules_file)" <<'EOF'
+{"version": 1, "rules": [{"host": "www.youtube.com", "target": "webapp"}]}
+EOF
+
+  run "$CLI" rules add youtube.com webapp
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "Rule changed: *.youtube.com → webapp (replaces www.youtube.com → webapp)" ]
+
+  run jq -c '.rules' "$(rules_file)"
+  [ "$output" = '[{"host":"*.youtube.com","target":"webapp"}]' ]
+}
+
+@test "add over two leftover entries that both normalise to the same host collapses them into one" {
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  cat >"$(rules_file)" <<'EOF'
+{"version": 1, "rules": [{"host": "youtube.com", "target": "webapp"}, {"host": "www.youtube.com", "target": "chromium.desktop"}]}
+EOF
+
+  run "$CLI" rules add youtube.com webapp
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "Rule changed: *.youtube.com → webapp (replaces youtube.com → webapp, www.youtube.com → chromium.desktop)" ]
+
+  run jq -c '.rules' "$(rules_file)"
+  [ "$output" = '[{"host":"*.youtube.com","target":"webapp"}]' ]
+}
+
+@test "add over three leftover entries interleaved with unrelated rules collapses into one at the first match's position" {
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  cat >"$(rules_file)" <<'EOF'
+{"version": 1, "rules": [
+  {"host": "*.a.com", "target": "zen.desktop"},
+  {"host": "www.youtube.com", "target": "chromium.desktop"},
+  {"host": "*.b.com", "target": "zen.desktop"},
+  {"host": "youtube.com", "target": "webapp"},
+  {"host": "*.c.com", "target": "zen.desktop"},
+  {"host": "*.youtube.com", "target": "webapp"}
+]}
+EOF
+
+  run "$CLI" rules add youtube.com webapp
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "Rule changed: *.youtube.com → webapp (replaces www.youtube.com → chromium.desktop, youtube.com → webapp, *.youtube.com → webapp)" ]
+
+  run jq -c '[.rules[].host]' "$(rules_file)"
+  [ "$output" = '["*.a.com","*.youtube.com","*.b.com","*.c.com"]' ]
 }
 
 @test "add rejects an unknown target and changes nothing" {
@@ -119,6 +245,7 @@ fake_installed_browser() {
 
   run "$CLI" rules remove github.com
   [ "$status" -eq 0 ]
+  [ "$output" = "Rule removed: *.github.com" ]
 
   run jq -c '.rules' "$(rules_file)"
   [ "$output" = '[]' ]
@@ -132,12 +259,47 @@ fake_installed_browser() {
   [ "$status" -eq 1 ]
 
   run jq -c '.rules' "$(rules_file)"
-  [ "$output" = '[{"host":"github.com","target":"zen.desktop"}]' ]
+  [ "$output" = '[{"host":"*.github.com","target":"zen.desktop"}]' ]
 }
 
 @test "remove fails when there is no rules file" {
   run "$CLI" rules remove github.com
   [ "$status" -eq 1 ]
+}
+
+@test "remove with a bare host removes a *.-form rule, and the reverse" {
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  cat >"$(rules_file)" <<'EOF'
+{"version": 1, "rules": [{"host": "*.youtube.com", "target": "webapp"}]}
+EOF
+  run "$CLI" rules remove youtube.com
+  [ "$status" -eq 0 ]
+  [ "$output" = "Rule removed: *.youtube.com" ]
+  run jq -c '.rules' "$(rules_file)"
+  [ "$output" = '[]' ]
+
+  cat >"$(rules_file)" <<'EOF'
+{"version": 1, "rules": [{"host": "youtube.com", "target": "webapp"}]}
+EOF
+  run "$CLI" rules remove '*.youtube.com'
+  [ "$status" -eq 0 ]
+  [ "$output" = "Rule removed: *.youtube.com" ]
+  run jq -c '.rules' "$(rules_file)"
+  [ "$output" = '[]' ]
+}
+
+@test "remove clears every leftover entry for the same host, not just the first match" {
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  cat >"$(rules_file)" <<'EOF'
+{"version": 1, "rules": [{"host": "youtube.com", "target": "webapp"}, {"host": "www.youtube.com", "target": "chromium.desktop"}]}
+EOF
+
+  run "$CLI" rules remove youtube.com
+  [ "$status" -eq 0 ]
+  [ "$output" = "Rule removed: *.youtube.com" ]
+
+  run jq -c '.rules' "$(rules_file)"
+  [ "$output" = '[]' ]
 }
 
 @test "list text prints one <host> <target> line per rule in file order" {
@@ -147,8 +309,8 @@ fake_installed_browser() {
 
   run "$CLI" rules list
   [ "$status" -eq 0 ]
-  [ "${lines[0]}" = "$(printf 'github.com\tzen.desktop')" ]
-  [ "${lines[1]}" = "$(printf 'basecamp.com\twebapp')" ]
+  [ "${lines[0]}" = "$(printf '*.github.com\tzen.desktop')" ]
+  [ "${lines[1]}" = "$(printf '*.basecamp.com\twebapp')" ]
 }
 
 @test "list text prints nothing when there are no rules" {
@@ -163,7 +325,7 @@ fake_installed_browser() {
 
   run "$CLI" rules list --json
   [ "$status" -eq 0 ]
-  run jq -e '. == [{"host":"github.com","target":"zen.desktop"}]' <<<"$output"
+  run jq -e '. == [{"host":"*.github.com","target":"zen.desktop"}]' <<<"$output"
   [ "$status" -eq 0 ]
 }
 

@@ -68,15 +68,42 @@ valid_desktop_id() {
   desktop_entry_exists "$id"
 }
 
-# valid_host <host> — a bare host or hostname glob: lowercase letters,
-# digits, "." and "-", optionally prefixed with "*.", with no empty label
-# (no leading, trailing or doubled ".").
+# valid_host <host> — a plain hostname (no scheme, no "*." glob): at least
+# two "."-separated labels, each made only of lowercase letters, digits and
+# "-", none of them empty.
 valid_host() {
-  local host="$1" rest
-  [[ "$host" =~ ^(\*\.)?[a-z0-9.-]+$ ]] || return 1
-  rest="$host"
-  [[ "$rest" == \*.* ]] && rest="${rest#\*.}"
-  [[ "$rest" != *".."* && "$rest" != .* && "$rest" != *. ]]
+  local host="$1" label
+  [[ "$host" == *.* ]] || return 1
+  while IFS= read -r label; do
+    [[ "$label" =~ ^[a-z0-9-]+$ ]] || return 1
+  done <<<"${host//./$'\n'}"
+  return 0
+}
+
+# normalize_host <input> — prints the canonical "*.<host>" rule pattern for
+# <input>: lowercases it; if it has "://", takes the URL's host (scheme,
+# "user:pass@", port, path, query and fragment stripped, the way
+# lib/router.sh's _switchyard_host does); strips a trailing "."; strips one
+# leading "*." and then one leading "www.", so "youtube.com",
+# "www.youtube.com", "*.www.youtube.com" and a youtube.com URL all print the
+# same pattern. Fails with "not a host: <input>" unless what's left is a
+# valid_host.
+normalize_host() {
+  local input="$1" host="${1,,}"
+
+  if [[ "$host" == *"://"* ]]; then
+    host="${host#*://}"
+    host="${host%%[/?#]*}"
+    host="${host##*@}"
+    host="${host%%:*}"
+  fi
+
+  host="${host%.}"
+  [[ "$host" == \*.* ]] && host="${host#\*.}"
+  [[ "$host" == www.* ]] && host="${host#www.}"
+
+  valid_host "$host" || fail "not a host: $input"
+  printf '*.%s\n' "$host"
 }
 
 # valid_target <target> — "webapp", or a desktop id that resolves to an
@@ -207,35 +234,105 @@ cmd_rules() {
       ;;
     add)
       [[ $# -eq 2 ]] || fail "rules add: usage: rules add <host> <target>"
-      local host="${1,,}" target="$2"
-      valid_host "$host" || fail "invalid host: $host"
+      local raw_host="$1" target="$2" host
+      host=$(normalize_host "$raw_host")
       if [[ "$target" != "webapp" ]]; then
         [[ "$target" == *.desktop ]] || fail "target must be webapp or a .desktop id: $target"
         desktop_entry_exists "$target" || fail "no desktop entry for $target"
       fi
 
-      local doc updated
+      local doc
       doc=$(rules_doc)
-      updated=$(jq -c --arg host "$host" --arg target "$target" '
-        .rules |= (
-          if any(.[]; .host == $host)
-          then map(if .host == $host then {host: $host, target: $target} else . end)
-          else . + [{host: $host, target: $target}]
-          end
-        )
-      ' <<<"$doc")
-      write_rules_doc "$updated"
+
+      # Find every existing rule whose host normalises to the same pattern
+      # (a leftover file from the old exact-only era can hold both
+      # "youtube.com" and "www.youtube.com" as separate entries); add
+      # replaces one of them in place with the canonical form and drops
+      # the rest, the same collecting the remove subcommand does.
+      local -a match_idx=()
+      local idx ehost enorm
+      while IFS=$'\t' read -r idx ehost; do
+        [[ -n "$idx" ]] || continue
+        enorm=$(normalize_host "$ehost" 2>/dev/null) || continue
+        [[ "$enorm" == "$host" ]] && match_idx+=("$idx")
+      done < <(jq -r '.rules | to_entries[] | "\(.key)\t\(.value.host)"' <<<"$doc")
+
+      local message
+      if ((${#match_idx[@]} == 0)); then
+        message="Rule added: $host → $target"
+        write_rules_doc "$(jq -c --arg host "$host" --arg target "$target" \
+          '.rules += [{host: $host, target: $target}]' <<<"$doc")"
+      else
+        local old_target old_host
+        old_target=$(jq -r --argjson i "${match_idx[0]}" '.rules[$i].target' <<<"$doc")
+        old_host=$(jq -r --argjson i "${match_idx[0]}" '.rules[$i].host' <<<"$doc")
+        # Only the literal canonical "*.host" counts as already in sync.
+        # A stored bare "host" is equivalent for the router (lib/router.sh
+        # treats both the same as $host), but it is NOT already canonical,
+        # so it does not count here and gets rewritten below like any other
+        # non-canonical stored form (e.g. "www.host"), or more than one
+        # matching entry to collapse, even when the target didn't change,
+        # so the file ends up matching what was just asked for.
+        if ((${#match_idx[@]} == 1)) \
+          && [[ "$old_target" == "$target" && "$old_host" == "$host" ]]; then
+          message="Rule unchanged: $host → $target"
+        else
+          # Name every entry this write replaces, in full and in file
+          # order, so a multi-entry collapse says exactly what it dropped
+          # instead of naming only one side of what changed.
+          local replaces="" i rhost rtarget
+          for i in "${match_idx[@]}"; do
+            rhost=$(jq -r --argjson i "$i" '.rules[$i].host' <<<"$doc")
+            rtarget=$(jq -r --argjson i "$i" '.rules[$i].target' <<<"$doc")
+            [[ -n "$replaces" ]] && replaces+=", "
+            replaces+="$rhost → $rtarget"
+          done
+          message="Rule changed: $host → $target (replaces $replaces)"
+
+          local first_idx="${match_idx[0]}" rest_idx=("${match_idx[@]:1}") rest_json
+          rest_json="[$(IFS=,; echo "${rest_idx[*]}")]"
+          write_rules_doc "$(jq -c --argjson first "$first_idx" --argjson rest "$rest_json" \
+            --arg host "$host" --arg target "$target" '
+            .rules |= (
+              to_entries
+              | map(select(.key as $k | ($rest | index($k)) == null))
+              | map(if .key == $first then {key: .key, value: {host: $host, target: $target}} else . end)
+              | map(.value)
+            )' <<<"$doc")"
+        fi
+      fi
+
+      echo "$message"
+      if [[ "$host" != "$raw_host" ]]; then
+        echo "Saved as $host, which matches ${host#\*.} and all its subdomains."
+      fi
       ;;
     remove)
       [[ $# -eq 1 ]] || fail "rules remove: usage: rules remove <host>"
-      local host="${1,,}"
+      local raw_host="$1" host
+      host=$(normalize_host "$raw_host")
       local doc
       doc=$(rules_doc)
-      jq -e --arg host "$host" 'any(.rules[]; .host == $host)' <<<"$doc" >/dev/null \
-        || fail "no rule for host: $host"
-      local updated
-      updated=$(jq -c --arg host "$host" '.rules |= map(select(.host != $host))' <<<"$doc")
-      write_rules_doc "$updated"
+
+      # Collect every rule whose host normalises to the same pattern (a
+      # file left over from the old exact-only-matching era can hold both
+      # "youtube.com" and "www.youtube.com" as separate entries); all of
+      # them are removed in one write.
+      local -a match_idx=()
+      local idx ehost enorm
+      while IFS=$'\t' read -r idx ehost; do
+        [[ -n "$idx" ]] || continue
+        enorm=$(normalize_host "$ehost" 2>/dev/null) || continue
+        [[ "$enorm" == "$host" ]] && match_idx+=("$idx")
+      done < <(jq -r '.rules | to_entries[] | "\(.key)\t\(.value.host)"' <<<"$doc")
+
+      ((${#match_idx[@]})) || fail "no rule for host: $raw_host"
+
+      local ids_json
+      ids_json="[$(IFS=,; echo "${match_idx[*]}")]"
+      write_rules_doc "$(jq -c --argjson ids "$ids_json" \
+        '.rules |= (to_entries | map(select(.key as $k | ($ids | index($k)) == null)) | map(.value))' <<<"$doc")"
+      echo "Rule removed: $host"
       ;;
     *)
       fail "rules: unknown subcommand: $sub"

@@ -9,7 +9,7 @@ setup() {
   nonexistent_fallback="$BATS_TEST_TMPDIR/no-fallback"
 }
 
-@test "exact host matches itself and not a subdomain" {
+@test "a bare host matches itself and its subdomains" {
   run --separate-stderr switchyard_route "https://basecamp.com" "$fixtures/rules-basic.json" "$nonexistent_fallback"
   [ "$status" -eq 0 ]
   [ "$output" = $'chromium.desktop\trule:basecamp.com' ]
@@ -17,7 +17,15 @@ setup() {
   echo "chromium.desktop" >"$BATS_TEST_TMPDIR/fallback"
   run --separate-stderr switchyard_route "https://www.basecamp.com" "$fixtures/rules-basic.json" "$BATS_TEST_TMPDIR/fallback"
   [ "$status" -eq 0 ]
-  [ "$output" = $'chromium.desktop\tfallback' ]
+  [ "$output" = $'chromium.desktop\trule:basecamp.com' ]
+}
+
+@test "a bare host does not match a host that merely shares a suffix" {
+  run _switchyard_host_matches "notexample.com" "example.com"
+  [ "$status" -eq 1 ]
+
+  run _switchyard_host_matches "example.com.evil.net" "example.com"
+  [ "$status" -eq 1 ]
 }
 
 @test "wildcard matches apex and subdomain" {

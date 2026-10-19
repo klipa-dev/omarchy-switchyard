@@ -42,8 +42,10 @@ Each clicked link is matched against `rules` in order; the first rule whose
 `host` fits wins. `host` is the link's host, lowercased, with any
 `user:pass@`, port, path and query removed; only `http` and `https` links
 have a host, so anything else (`mailto:`, a bare word, ...) always falls
-through. A bare host like `basecamp.com` matches only that host, not a
-subdomain; `*.example.com` matches `example.com` itself and any subdomain.
+through. A host covers the site and all its subdomains: `basecamp.com` and
+`*.basecamp.com` are the same rule, and both match `basecamp.com`,
+`www.basecamp.com` and any other subdomain; there's no way to match a host
+and exclude its subdomains.
 
 `target` is either a desktop id (`chromium.desktop`, `zen.desktop`, ...) or
 the word `webapp`, which opens the link as a browser window with no
@@ -72,17 +74,43 @@ omarchy-switchyard fallback [<desktop-id>]         # show, or set, the fallback 
 omarchy-switchyard browsers [--json]               # list installed browsers
 ```
 
-`rules add` lowercases `<host>` and validates it against the same shape
-`rules.json` expects, and checks that `<target>` is `webapp` or a desktop
-id that actually resolves to an installed application, before writing;
-adding a rule for a host that already has one replaces it. `rules remove`
-fails if there is no rule for that host. `browsers` lists every installed
-browser's desktop id and name, which is useful for picking a `<target>` or
-a fallback. None of these commands touch your rules file if the host,
-target or desktop id is invalid, and none of them ever hand-edit
-`rules.json`: each writes the whole file atomically. If `rules.json`
-itself is invalid JSON, every command that would otherwise write to it
-fails instead, telling you the file to fix by hand.
+`<host>` can be a bare host (`youtube.com`), a `*.`-prefixed one
+(`*.youtube.com`), or a full URL (`https://www.youtube.com/watch?v=x`);
+`rules add` normalises whatever you type to the canonical `*.<host>` form —
+lowercased, with any scheme, `user:pass@`, port, path and query stripped,
+and a leading `www.` dropped — so `youtube.com`, `www.youtube.com`,
+`*.www.youtube.com` and that URL all save as `*.youtube.com`. It also
+checks that `<target>` is `webapp` or a desktop id that actually resolves
+to an installed application, before writing. Each command prints what it
+did:
+
+```
+Rule added: *.youtube.com → webapp
+Rule changed: *.youtube.com → webapp (replaces www.youtube.com → chromium.desktop)
+Rule changed: *.youtube.com → webapp (replaces *.youtube.com → webapp, www.youtube.com → chromium.desktop)
+Rule unchanged: *.youtube.com → webapp
+Rule removed: *.youtube.com
+```
+
+The parenthetical lists, in full and in the order they appeared in the
+file, every existing rule the write replaced (`<host> → <target>`, comma
+separated if there was more than one — a leftover file can hold several
+entries that all normalise to the same host). `Rule unchanged` only fires
+when exactly one existing rule already matched both the canonical host and
+the target you asked for; anything else that touches an existing rule,
+including a host-form-only rewrite, is a `Rule changed`.
+
+When the host you typed isn't already in the canonical form, `rules add`
+prints a second line: `Saved as *.youtube.com, which matches youtube.com
+and all its subdomains.` Adding a rule for a host that already has one
+(typed any way that normalises the same) replaces it in place; `rules
+remove` compares the same way and fails if there is no rule for that host.
+`browsers` lists every installed browser's desktop id and name, which is
+useful for picking a `<target>` or a fallback. None of these commands touch
+your rules file if the host, target or desktop id is invalid, and none of
+them ever hand-edit `rules.json`: each writes the whole file atomically. If
+`rules.json` itself is invalid JSON, every command that would otherwise
+write to it fails instead, telling you the file to fix by hand.
 
 ## Activate
 

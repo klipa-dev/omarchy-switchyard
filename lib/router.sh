@@ -29,17 +29,14 @@ _switchyard_host() {
   printf '%s\n' "$host"
 }
 
-# _switchyard_host_matches <host> <pattern> — a bare pattern matches only
-# itself; "*.example.com" matches example.com and any subdomain.
+# _switchyard_host_matches <host> <pattern> — "example.com" and
+# "*.example.com" are equivalent: both match example.com itself and any
+# subdomain of it. Nothing matches exactly-only.
 _switchyard_host_matches() {
-  local host=$1 pattern=$2 suffix
+  local host=$1 pattern=$2 base
   pattern=${pattern,,}
-  if [[ $pattern == \*.* ]]; then
-    suffix=${pattern#\*.}
-    [[ $host == "$suffix" || $host == *".$suffix" ]]
-  else
-    [[ $host == "$pattern" ]]
-  fi
+  base=${pattern#\*.}
+  [[ $host == "$base" || $host == *".$base" ]]
 }
 
 # _switchyard_desktop_entry <desktop-id> — prints the path to the desktop

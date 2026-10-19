@@ -43,6 +43,12 @@ Item {
   property string fallback: ""
   property bool hasFallback: false
   property string error: ""
+  // The last successful "rules add"/"rules remove"/"fallback" run's
+  // stdout, shown below the add row until the next such run (success or
+  // failure) replaces or clears it, or any error (from this run or any
+  // other CLI call) is shown instead.
+  property string actionStatus: ""
+  onErrorChanged: if (root.error !== "") root.actionStatus = ""
 
   property var rules: []
 
@@ -260,7 +266,10 @@ Item {
 
   Process {
     id: addProc
-    stdout: StdioCollector { waitForEnd: true }
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.actionStatus = String(text || "").trim()
+    }
     stderr: StdioCollector {
       waitForEnd: true
       onStreamFinished: if (String(text || "").trim() !== "") root.error = String(text).trim()
@@ -274,7 +283,10 @@ Item {
 
   Process {
     id: removeProc
-    stdout: StdioCollector { waitForEnd: true }
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.actionStatus = String(text || "").trim()
+    }
     stderr: StdioCollector {
       waitForEnd: true
       onStreamFinished: if (String(text || "").trim() !== "") root.error = String(text).trim()
@@ -288,7 +300,10 @@ Item {
 
   Process {
     id: fallbackProc
-    stdout: StdioCollector { waitForEnd: true }
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.actionStatus = String(text || "").trim()
+    }
     stderr: StdioCollector {
       waitForEnd: true
       onStreamFinished: if (String(text || "").trim() !== "") root.error = String(text).trim()
@@ -545,6 +560,17 @@ Item {
                 enabled: !addProc.running
                 onClicked: root.addRule()
               }
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              visible: root.actionStatus !== ""
+              text: root.actionStatus
+              color: Color.foreground
+              font.family: Style.font.family
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.Wrap
+              width: parent.width
             }
 
             PanelSeparator {}
