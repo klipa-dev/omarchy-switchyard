@@ -13,8 +13,13 @@ Usage: omarchy-switchyard <command>
 Commands:
   activate [--fallback <desktop-id>]  register Switchyard as the default browser
   deactivate                          restore the browser that was default before activate
-  status                              show whether Switchyard is active, and recent log lines
+  status [--json]                     show whether Switchyard is active, and recent log lines
   open [--dry-run] [flags] <url>      route and launch <url> the way a clicked link would
+  rules list [--json]                 show the configured rules
+  rules add <host> <target>           add a rule, or replace the one for <host>
+  rules remove <host>                 remove the rule for <host>
+  fallback [<desktop-id>]             show, or set, the fallback browser
+  browsers [--json]                   list installed browsers
   --help, -h                          show this help
 EOF
 }
@@ -50,6 +55,59 @@ desktop_entry_exists() {
     [[ -f "$dir/$id" ]] && return 0
   done
   return 1
+}
+
+# valid_desktop_id <id> — a desktop id that ends in ".desktop" and resolves
+# to an installed entry.
+valid_desktop_id() {
+  local id="$1"
+  [[ "$id" == *.desktop ]] || return 1
+  desktop_entry_exists "$id"
+}
+
+# valid_host <host> — a bare host or hostname glob: lowercase letters,
+# digits, "." and "-", optionally prefixed with "*.", with no empty label
+# (no leading, trailing or doubled ".").
+valid_host() {
+  local host="$1" rest
+  [[ "$host" =~ ^(\*\.)?[a-z0-9.-]+$ ]] || return 1
+  rest="$host"
+  [[ "$rest" == \*.* ]] && rest="${rest#\*.}"
+  [[ "$rest" != *".."* && "$rest" != .* && "$rest" != *. ]]
+}
+
+# valid_target <target> — "webapp", or a desktop id that resolves to an
+# installed entry.
+valid_target() {
+  local target="$1"
+  [[ "$target" == "webapp" ]] && return 0
+  valid_desktop_id "$target"
+}
+
+rules_path="$config_dir/rules.json"
+fallback_path="$config_dir/fallback"
+
+# rules_doc — prints the parsed rules.json as a single compact JSON value,
+# or the empty default ({"version": 1, "rules": []}) when the file is
+# missing; fails without printing anything when the file exists but its
+# .rules is not an array.
+rules_doc() {
+  if [[ ! -f "$rules_path" ]]; then
+    echo '{"version": 1, "rules": []}'
+    return 0
+  fi
+  jq -e '(.rules // null) | type == "array"' "$rules_path" >/dev/null 2>&1 \
+    || fail "rules.json is invalid; fix it by hand: $rules_path"
+  jq -c '.' "$rules_path"
+}
+
+# write_rules_doc <json> — atomically replaces rules.json with <json>.
+write_rules_doc() {
+  local doc="$1" tmp
+  mkdir -p "$config_dir"
+  tmp=$(mktemp "$config_dir/rules.json.XXXXXX")
+  printf '%s\n' "$doc" >"$tmp"
+  mv "$tmp" "$rules_path"
 }
 
 cmd_activate() {
@@ -122,45 +180,226 @@ cmd_deactivate() {
   fi
 }
 
+cmd_rules() {
+  local sub="${1:-}"
+  [[ $# -ge 1 ]] || fail "rules: usage: rules list|add|remove ..."
+  shift
+
+  case "$sub" in
+    list)
+      local json=0
+      while [[ $# -gt 0 ]]; do
+        case "$1" in
+          --json) json=1; shift ;;
+          *) fail "rules list: unknown option: $1" ;;
+        esac
+      done
+      local doc
+      doc=$(rules_doc)
+      if ((json)); then
+        jq -c '.rules' <<<"$doc"
+      else
+        jq -r '.rules[] | "\(.host)\t\(.target)"' <<<"$doc"
+      fi
+      ;;
+    add)
+      [[ $# -eq 2 ]] || fail "rules add: usage: rules add <host> <target>"
+      local host="${1,,}" target="$2"
+      valid_host "$host" || fail "invalid host: $host"
+      if [[ "$target" != "webapp" ]]; then
+        [[ "$target" == *.desktop ]] || fail "target must be webapp or a .desktop id: $target"
+        desktop_entry_exists "$target" || fail "no desktop entry for $target"
+      fi
+
+      local doc updated
+      doc=$(rules_doc)
+      updated=$(jq -c --arg host "$host" --arg target "$target" '
+        .rules |= (
+          if any(.[]; .host == $host)
+          then map(if .host == $host then {host: $host, target: $target} else . end)
+          else . + [{host: $host, target: $target}]
+          end
+        )
+      ' <<<"$doc")
+      write_rules_doc "$updated"
+      ;;
+    remove)
+      [[ $# -eq 1 ]] || fail "rules remove: usage: rules remove <host>"
+      local host="${1,,}"
+      local doc
+      doc=$(rules_doc)
+      jq -e --arg host "$host" 'any(.rules[]; .host == $host)' <<<"$doc" >/dev/null \
+        || fail "no rule for host: $host"
+      local updated
+      updated=$(jq -c --arg host "$host" '.rules |= map(select(.host != $host))' <<<"$doc")
+      write_rules_doc "$updated"
+      ;;
+    *)
+      fail "rules: unknown subcommand: $sub"
+      ;;
+  esac
+}
+
+cmd_fallback() {
+  [[ $# -le 1 ]] || fail "fallback: usage: fallback [<desktop-id>]"
+
+  if [[ $# -eq 0 ]]; then
+    if [[ -f "$fallback_path" ]]; then
+      cat "$fallback_path"
+    else
+      echo "(none)"
+    fi
+    return 0
+  fi
+
+  local id="$1"
+  valid_desktop_id "$id" || fail "no desktop entry for $id"
+  mkdir -p "$config_dir"
+  local tmp
+  tmp=$(mktemp "$config_dir/fallback.XXXXXX")
+  printf '%s\n' "$id" >"$tmp"
+  mv "$tmp" "$fallback_path"
+}
+
+cmd_browsers() {
+  local json=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --json) json=1; shift ;;
+      *) fail "browsers: unknown option: $1" ;;
+    esac
+  done
+
+  local -A seen=()
+  local -a lines=()
+  local dir f id name mimetype categories nodisplay
+
+  for dir in "$apps_dir" "$HOME/.nix-profile/share/applications" "/usr/share/applications"; do
+    [[ -d "$dir" ]] || continue
+    for f in "$dir"/*.desktop; do
+      [[ -f "$f" ]] || continue
+      id="$(basename "$f")"
+      [[ "$id" == "$desktop_id" ]] && continue
+      [[ -n "${seen[$id]:-}" ]] && continue
+      seen[$id]=1
+
+      nodisplay=$(sed -n 's/^NoDisplay=//p' "$f" | head -1)
+      [[ "$nodisplay" == "true" ]] && continue
+
+      mimetype=$(sed -n 's/^MimeType=//p' "$f" | head -1)
+      categories=$(sed -n 's/^Categories=//p' "$f" | head -1)
+      [[ "$mimetype" == *"x-scheme-handler/https"* || "$categories" == *"WebBrowser"* ]] || continue
+
+      name=$(sed -n 's/^Name=//p' "$f" | head -1)
+      [[ -n "$name" ]] || name="$id"
+      lines+=("$(printf '%s\t%s' "$id" "$name")")
+    done
+  done
+
+  local sorted=""
+  if ((${#lines[@]})); then
+    sorted=$(printf '%s\n' "${lines[@]}" | sort)
+  fi
+
+  if ((json)); then
+    jq -n --arg raw "$sorted" '
+      if $raw == "" then []
+      else
+        $raw | split("\n") | map(select(length > 0) | split("\t") | {id: .[0], name: .[1]})
+      end
+    '
+  elif [[ -n "$sorted" ]]; then
+    printf '%s\n' "$sorted"
+  fi
+}
+
 cmd_status() {
-  local current fallback rules_path rules_status log_path n
+  local json=0
+  case "${1:-}" in
+    --json) json=1; shift ;;
+    "") ;;
+    *) fail "status: unknown option: $1" ;;
+  esac
+
+  local current active fallback_recorded fallback_display
+  local rules_state rules_count log_path n
 
   current=$(xdg_settings get default-web-browser || true)
   if [[ "$current" == "$desktop_id" ]]; then
-    echo "active: yes"
+    active="yes"
   else
-    echo "active: no"
+    active="no"
   fi
-  echo "default browser: $current"
 
-  if [[ -f "$config_dir/fallback" ]]; then
-    fallback=$(cat "$config_dir/fallback")
+  if [[ -f "$fallback_path" ]]; then
+    fallback_recorded=$(cat "$fallback_path")
+    fallback_display="$fallback_recorded"
   else
-    fallback="(none)"
+    fallback_recorded=""
+    fallback_display="(none)"
   fi
-  echo "fallback: $fallback"
 
-  rules_path="$config_dir/rules.json"
+  rules_count=""
   if [[ ! -f "$rules_path" ]]; then
-    rules_status="missing"
+    rules_state="missing"
   elif ! jq -e . "$rules_path" >/dev/null 2>&1; then
-    rules_status="invalid JSON"
+    rules_state="invalid"
   else
     n=$(jq -e '.rules | if type == "array" then length else null end' "$rules_path" 2>/dev/null) || n=""
     if [[ -z "$n" || "$n" == "null" ]]; then
-      rules_status="invalid JSON"
+      rules_state="invalid"
     else
-      rules_status="$n rules"
+      rules_state="ok"
+      rules_count="$n"
     fi
   fi
-  echo "rules: $rules_path ($rules_status)"
+
+  log_path="$state_dir/log"
+  local recent=""
+  if [[ -f "$log_path" ]]; then
+    recent=$(tail -n 5 "$log_path")
+  fi
+
+  if ((json)); then
+    jq -n \
+      --arg active "$active" \
+      --arg default_browser "$current" \
+      --arg fallback "$fallback_recorded" \
+      --arg rules_path "$rules_path" \
+      --arg rules_count "$rules_count" \
+      --arg rules_state "$rules_state" \
+      --arg handler "$handler" \
+      --arg recent "$recent" \
+      '{
+        active: ($active == "yes"),
+        default_browser: $default_browser,
+        fallback: (if $fallback == "" then null else $fallback end),
+        rules_path: $rules_path,
+        rules_count: (if $rules_count == "" then null else ($rules_count | tonumber) end),
+        rules_state: $rules_state,
+        handler: $handler,
+        recent: (if $recent == "" then [] else ($recent | split("\n") | map(select(length > 0))) end)
+      }'
+    return 0
+  fi
+
+  echo "active: $active"
+  echo "default browser: $current"
+  echo "fallback: $fallback_display"
+
+  local rules_status_text
+  case "$rules_state" in
+    missing) rules_status_text="missing" ;;
+    invalid) rules_status_text="invalid JSON" ;;
+    ok) rules_status_text="$rules_count rules" ;;
+  esac
+  echo "rules: $rules_path ($rules_status_text)"
 
   echo "handler: $handler"
 
-  log_path="$state_dir/log"
-  if [[ -f "$log_path" ]]; then
+  if [[ -n "$recent" ]]; then
     echo "recent:"
-    tail -n 5 "$log_path"
+    printf '%s\n' "$recent"
   fi
 
   return 0
@@ -190,6 +429,18 @@ case "${1:-}" in
   open)
     shift
     exec "$handler" "$@"
+    ;;
+  rules)
+    shift
+    cmd_rules "$@"
+    ;;
+  fallback)
+    shift
+    cmd_fallback "$@"
+    ;;
+  browsers)
+    shift
+    cmd_browsers "$@"
     ;;
   *)
     echo "omarchy-switchyard: unknown command: $1" >&2

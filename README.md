@@ -60,6 +60,30 @@ means every link goes to the fallback, with a notification if the file is
 invalid). A rule whose browser isn't installed behaves the same way: the
 link opens in the fallback browser instead, with a notification.
 
+### Editing rules from the command line
+
+You can skip hand-editing `rules.json` and use the CLI instead:
+
+```sh
+omarchy-switchyard rules list [--json]            # show the configured rules
+omarchy-switchyard rules add <host> <target>      # add a rule, or replace the one for <host>
+omarchy-switchyard rules remove <host>             # remove the rule for <host>
+omarchy-switchyard fallback [<desktop-id>]         # show, or set, the fallback browser
+omarchy-switchyard browsers [--json]               # list installed browsers
+```
+
+`rules add` lowercases `<host>` and validates it against the same shape
+`rules.json` expects, and checks that `<target>` is `webapp` or a desktop
+id that actually resolves to an installed application, before writing;
+adding a rule for a host that already has one replaces it. `rules remove`
+fails if there is no rule for that host. `browsers` lists every installed
+browser's desktop id and name, which is useful for picking a `<target>` or
+a fallback. None of these commands touch your rules file if the host,
+target or desktop id is invalid, and none of them ever hand-edit
+`rules.json`: each writes the whole file atomically. If `rules.json`
+itself is invalid JSON, every command that would otherwise write to it
+fails instead, telling you the file to fix by hand.
+
 ## Activate
 
 ```sh
@@ -86,6 +110,8 @@ fallback, whether `rules.json` is present and how many rules it has, and
 the last few lines of the routing log. Every routing decision — matched
 rule or fallback, and the browser it launched — is appended to
 `~/.local/state/omarchy-switchyard/log` (the last 200 lines are kept).
+Add `--json` for the same facts as a single JSON object, meant for
+scripts and the settings panel rather than reading by eye.
 
 ## Update and uninstall
 

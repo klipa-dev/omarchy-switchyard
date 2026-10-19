@@ -198,10 +198,80 @@ EOF
   [[ "$output" == *"rules.json (invalid JSON)"* ]]
 }
 
+@test "status --json parses and flips .active with activate/deactivate" {
+  seed_default_browser zen.desktop
+
+  run "$CLI" status --json
+  [ "$status" -eq 0 ]
+  run jq -e '.active == false and .default_browser == "zen.desktop"' <<<"$output"
+  [ "$status" -eq 0 ]
+
+  "$CLI" activate
+
+  run "$CLI" status --json
+  [ "$status" -eq 0 ]
+  run jq -e '.active == true and .fallback == "zen.desktop"' <<<"$output"
+  [ "$status" -eq 0 ]
+
+  "$CLI" deactivate
+
+  run "$CLI" status --json
+  [ "$status" -eq 0 ]
+  run jq -e '.active == false' <<<"$output"
+  [ "$status" -eq 0 ]
+}
+
+@test "status --json reports rules_count and rules_state for two rules" {
+  seed_default_browser zen.desktop
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  cat >"$XDG_CONFIG_HOME/omarchy-switchyard/rules.json" <<'EOF'
+{"version": 1, "rules": [{"host": "*.google.com", "target": "chromium.desktop"}, {"host": "basecamp.com", "target": "webapp"}]}
+EOF
+
+  run "$CLI" status --json
+  [ "$status" -eq 0 ]
+  run jq -e '.rules_state == "ok" and .rules_count == 2' <<<"$output"
+  [ "$status" -eq 0 ]
+}
+
+@test "status --json reports rules_state missing when rules.json is absent" {
+  seed_default_browser zen.desktop
+
+  run "$CLI" status --json
+  [ "$status" -eq 0 ]
+  run jq -e '.rules_state == "missing" and .rules_count == null' <<<"$output"
+  [ "$status" -eq 0 ]
+}
+
+@test "status --json reports rules_state invalid for a broken rules.json" {
+  seed_default_browser zen.desktop
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  echo "not json" >"$XDG_CONFIG_HOME/omarchy-switchyard/rules.json"
+
+  run "$CLI" status --json
+  [ "$status" -eq 0 ]
+  run jq -e '.rules_state == "invalid" and .rules_count == null' <<<"$output"
+  [ "$status" -eq 0 ]
+}
+
+@test "status --json reports fallback null before activate" {
+  seed_default_browser zen.desktop
+
+  run "$CLI" status --json
+  [ "$status" -eq 0 ]
+  run jq -e '.fallback == null' <<<"$output"
+  [ "$status" -eq 0 ]
+}
+
 @test "--help prints usage and exits 0" {
   run "$CLI" --help
   [ "$status" -eq 0 ]
   [[ "$output" == *"Usage: omarchy-switchyard"* ]]
+  [[ "$output" == *"rules list"* ]]
+  [[ "$output" == *"rules add"* ]]
+  [[ "$output" == *"rules remove"* ]]
+  [[ "$output" == *"fallback"* ]]
+  [[ "$output" == *"browsers"* ]]
 }
 
 @test "an unknown command exits 1" {
