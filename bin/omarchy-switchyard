@@ -1,4 +1,5 @@
 #!/bin/bash
+# shellcheck source-path=SCRIPTDIR
 set -euo pipefail
 
 fail() {
@@ -26,6 +27,8 @@ EOF
 
 script_dir="$(dirname "$(readlink -f "$0")")"
 repo_root="$(dirname "$script_dir")"
+# shellcheck source=../lib/desktop.sh
+source "$repo_root/lib/desktop.sh"
 handler="$script_dir/omarchy-switchyard-open"
 template="$repo_root/share/omarchy-switchyard.desktop"
 desktop_id="omarchy-switchyard.desktop"
@@ -51,9 +54,9 @@ is_chromium_family() {
 # here we only need to know the entry exists, not what it runs.
 desktop_entry_exists() {
   local id="$1" dir
-  for dir in "$apps_dir" "$HOME/.nix-profile/share/applications" "/usr/share/applications"; do
+  while IFS= read -r dir; do
     [[ -f "$dir/$id" ]] && return 0
-  done
+  done < <(switchyard_applications_dirs)
   return 1
 }
 
@@ -274,7 +277,7 @@ cmd_browsers() {
   local -a lines=()
   local dir f id name mimetype categories nodisplay
 
-  for dir in "$apps_dir" "$HOME/.nix-profile/share/applications" "/usr/share/applications"; do
+  while IFS= read -r dir; do
     [[ -d "$dir" ]] || continue
     for f in "$dir"/*.desktop; do
       [[ -f "$f" ]] || continue
@@ -294,7 +297,7 @@ cmd_browsers() {
       [[ -n "$name" ]] || name="$id"
       lines+=("$(printf '%s\t%s' "$id" "$name")")
     done
-  done
+  done < <(switchyard_applications_dirs)
 
   local sorted=""
   if ((${#lines[@]})); then

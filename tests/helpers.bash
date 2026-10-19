@@ -10,6 +10,11 @@ isolate_home() {
   export XDG_DATA_HOME="$HOME/.local/share"
   export XDG_STATE_HOME="$HOME/.local/state"
   export XDG_CURRENT_DESKTOP="Hyprland"
+  # So a test sees only the desktop entries it creates, never this
+  # machine's own, so no test ever touches the real machine's desktop
+  # entries; desktop.bats covers the default search order with this
+  # variable unset.
+  export SWITCHYARD_APPLICATIONS_DIRS="$XDG_DATA_HOME/applications"
   unset BROWSER
 }
 

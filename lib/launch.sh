@@ -1,6 +1,10 @@
 # shellcheck shell=bash
+# shellcheck source-path=SCRIPTDIR
 # lib/launch.sh — the only code that starts a browser. Sourced, not
 # executed. Honours SWITCHYARD_DRY_RUN=1 (set by the handler's --dry-run).
+
+# shellcheck source=./desktop.sh
+source "$(dirname "${BASH_SOURCE[0]}")/desktop.sh"
 
 fail() {
   echo "switchyard: $*" >&2
@@ -18,9 +22,7 @@ SWITCHYARD_MISSING_TARGET=3
 # fallback candidate from.
 _switchyard_resolve_exec() {
   local id=$1 dir path line
-  for dir in "${XDG_DATA_HOME:-$HOME/.local/share}/applications" \
-    "$HOME/.nix-profile/share/applications" \
-    "/usr/share/applications"; do
+  while IFS= read -r dir; do
     path="$dir/$id"
     if [[ -f $path ]]; then
       line=$(sed -n 's/^Exec=\([^ ]*\).*/\1/p' "$path" | head -1)
@@ -29,7 +31,7 @@ _switchyard_resolve_exec() {
         return 0
       fi
     fi
-  done
+  done < <(switchyard_applications_dirs)
   return 1
 }
 

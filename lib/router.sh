@@ -1,7 +1,11 @@
 # shellcheck shell=bash
+# shellcheck source-path=SCRIPTDIR
 # lib/router.sh — pure routing: a URL, the rules file and the fallback file
 # yield a target. Launches nothing (lib/launch.sh does that). Sourced, not
 # executed.
+
+# shellcheck source=./desktop.sh
+source "$(dirname "${BASH_SOURCE[0]}")/desktop.sh"
 
 fail() {
   echo "switchyard: $*" >&2
@@ -43,14 +47,12 @@ _switchyard_host_matches() {
 # Exec from.
 _switchyard_desktop_entry() {
   local id=$1 dir
-  for dir in "${XDG_DATA_HOME:-$HOME/.local/share}/applications" \
-    "$HOME/.nix-profile/share/applications" \
-    "/usr/share/applications"; do
+  while IFS= read -r dir; do
     if [[ -f "$dir/$id" ]]; then
       printf '%s\n' "$dir/$id"
       return 0
     fi
-  done
+  done < <(switchyard_applications_dirs)
   return 1
 }
 

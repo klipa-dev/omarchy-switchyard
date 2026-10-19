@@ -185,3 +185,6 @@ make check   # shellcheck, qmllint, bats, and the Omarchy plugin validator
 
 Needs `bats`, `shellcheck`, `qmllint`, and an Omarchy install (for
 `omarchy plugin validate`).
+
+Tests set `SWITCHYARD_APPLICATIONS_DIRS` so they see only the desktop
+entries they create, never the real machine's.

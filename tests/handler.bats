@@ -134,9 +134,6 @@ EOF
 }
 
 @test "a webapp rule falls back to the fallback browser as a normal window when the webapp browser isn't installed" {
-  if [[ -e /usr/share/applications/chromium.desktop ]]; then
-    skip "chromium.desktop is installed on this machine, so the hardcoded webapp browser always resolves"
-  fi
   fake_browser zen.desktop
   mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
   echo "zen.desktop" >"$XDG_CONFIG_HOME/omarchy-switchyard/fallback"

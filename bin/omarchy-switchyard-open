@@ -20,6 +20,8 @@ EOF
 }
 
 script_dir=$(dirname "$(readlink -f "$0")")
+# shellcheck source=../lib/desktop.sh
+source "$script_dir/../lib/desktop.sh"
 # shellcheck source=../lib/router.sh
 source "$script_dir/../lib/router.sh"
 # shellcheck source=../lib/launch.sh
