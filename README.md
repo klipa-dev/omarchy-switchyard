@@ -1,25 +1,27 @@
 # Switchyard
 
-Switchyard is an Omarchy shell plugin that decides which browser a clicked
-link opens in, based on the link's host. Set a handful of host rules and it
-opens Google Meet links in Chromium, a work tool as a Chromium web app, and
-everything else in your regular browser, all without you ever seeing a
-picker. It's for anyone who runs a non-Chromium browser as their default
-(Zen, Firefox, ...) but still wants a few sites, or Chromium-only web apps,
-to open in Chromium.
+Switchyard is an Omarchy shell plugin: click a link to a site you've chosen
+and it opens as a web app, in its own Chromium window with no address bar
+or tabs, the way an installed Omarchy web app does (`*.youtube.com → web
+app`). Click any other link and it opens in your usual browser instead.
+Sending a chosen site to a different browser, rather than opening it as a
+web app, is the other thing Switchyard does — handy if you run a
+non-Chromium browser as your default (Zen, Firefox, ...) but still need a
+site, or a Chromium-only web app, to run in Chromium. All of this happens
+without you ever seeing a picker.
 
 ## Install
 
 ```sh
 omarchy plugin add https://github.com/klipa-dev/omarchy-switchyard.git --enable
-~/.config/omarchy/plugins/klipa.switchyard/bin/omarchy-switchyard activate
+~/.config/omarchy/plugins/benviu.switchyard/bin/omarchy-switchyard activate
 ```
 
 Optionally, put the CLI on your `PATH` so you can run it as just
 `omarchy-switchyard`:
 
 ```sh
-ln -s ~/.config/omarchy/plugins/klipa.switchyard/bin/omarchy-switchyard ~/.local/bin/omarchy-switchyard
+ln -s ~/.config/omarchy/plugins/benviu.switchyard/bin/omarchy-switchyard ~/.local/bin/omarchy-switchyard
 ```
 
 ## Rules
@@ -31,9 +33,9 @@ Switchyard reads `~/.config/omarchy-switchyard/rules.json`. Copy
 {
   "version": 1,
   "rules": [
-    { "host": "*.google.com", "target": "chromium.desktop" },
     { "host": "basecamp.com", "target": "webapp" },
-    { "host": "github.com", "target": "zen.desktop" }
+    { "host": "*.youtube.com", "target": "webapp" },
+    { "host": "*.google.com", "target": "chromium.desktop" }
   ]
 }
 ```
@@ -47,12 +49,13 @@ through. A host covers the site and all its subdomains: `basecamp.com` and
 `www.basecamp.com` and any other subdomain; there's no way to match a host
 and exclude its subdomains.
 
-`target` is either a desktop id (`chromium.desktop`, `zen.desktop`, ...) or
-the word `webapp`, which opens the link as a browser window with no
-address bar or tabs, the way an installed web app does. The browser behind
-`webapp` is whichever Chromium-family browser Switchyard resolves itself:
-the fallback browser below, if it is Chromium-family, otherwise
-`chromium.desktop` — not necessarily the fallback browser itself.
+`target` is the word `webapp`, which opens the link as a browser window with
+no address bar or tabs, the way an installed web app does, or a desktop id
+(`chromium.desktop`, `zen.desktop`, ...), which opens the link in that
+browser's ordinary window instead. The browser behind `webapp` is whichever
+Chromium-family browser Switchyard resolves itself: the fallback browser
+below, if it is Chromium-family, otherwise `chromium.desktop` — not
+necessarily the fallback browser itself.
 
 A link that matches no rule goes to the fallback browser: the single
 desktop id in `~/.config/omarchy-switchyard/fallback`, which `activate`
@@ -143,7 +146,7 @@ panel and the command line stay in sync.
 Summon it with:
 
 ```sh
-omarchy-shell shell toggle klipa.switchyard '{}'
+omarchy-shell shell toggle benviu.switchyard '{}'
 ```
 
 Add a menu row for it in `~/.config/omarchy/extensions/omarchy-menu.jsonc`:
@@ -152,7 +155,7 @@ Add a menu row for it in `~/.config/omarchy/extensions/omarchy-menu.jsonc`:
 "switchyard": {
   "icon": "󰖟",
   "label": "Switchyard",
-  "action": "omarchy-shell shell toggle klipa.switchyard '{}'"
+  "action": "omarchy-shell shell toggle benviu.switchyard '{}'"
 }
 ```
 
@@ -160,7 +163,7 @@ Or bind a free key in `~/.config/hypr/bindings.conf` (pick a combination
 that isn't already taken):
 
 ```
-bindd = SUPER SHIFT, S, Switchyard, exec, omarchy-shell shell toggle klipa.switchyard '{}'
+bindd = SUPER SHIFT, S, Switchyard, exec, omarchy-shell shell toggle benviu.switchyard '{}'
 ```
 
 ## Status and log
@@ -180,7 +183,7 @@ scripts and the settings panel rather than reading by eye.
 ## Update and uninstall
 
 ```sh
-omarchy plugin update klipa.switchyard
+omarchy plugin update benviu.switchyard
 ```
 
 To uninstall, deactivate first so your default browser is restored, then
@@ -188,7 +191,7 @@ remove the plugin:
 
 ```sh
 omarchy-switchyard deactivate
-omarchy plugin remove klipa.switchyard
+omarchy plugin remove benviu.switchyard
 ```
 
 ## Limitations
@@ -204,6 +207,13 @@ omarchy plugin remove klipa.switchyard
   your default browser) deactivates Switchyard silently, since Switchyard
   is no longer the browser `xdg-settings` points to; `status` shows this
   as `active: no`. Run `activate` again to take over.
+- Your normal browser may ask to become the default again (Zen and
+  Firefox do, on start); turn that check off in its settings, since
+  accepting it silently deactivates Switchyard the same way (`status`
+  shows it; run `activate` again to take over).
+- Each clicked link opens a new web-app window at that link; an
+  already-open window for the same site is not reused, because Chromium
+  has no way to point an open app window at a new address.
 
 ## Development
 

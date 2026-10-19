@@ -6,7 +6,7 @@ import qs.Commons
 import qs.Ui
 
 // Switchyard's settings panel: summoned over `omarchy-shell shell toggle
-// klipa.switchyard '{}'`. Shows whether Switchyard is the default browser,
+// benviu.switchyard '{}'`. Shows whether Switchyard is the default browser,
 // the recorded fallback, and the configured rules; adds, edits and removes
 // rules and picks the fallback browser; toggles activation.
 // Every write goes through the CLI (Quickshell.Io Process); the only direct
@@ -29,7 +29,7 @@ Item {
     var url = String(Qt.resolvedUrl("."))
     return url.indexOf("file://") === 0
       ? url.substring("file://".length)
-      : (Quickshell.env("HOME") + "/.config/omarchy/plugins/klipa.switchyard/")
+      : (Quickshell.env("HOME") + "/.config/omarchy/plugins/benviu.switchyard/")
   }
   readonly property string cliPath: pluginDir + "bin/omarchy-switchyard"
   readonly property string rulesPath: {
@@ -92,7 +92,7 @@ Item {
 
   function dismiss() {
     if (root.shell && typeof root.shell.hide === "function")
-      root.shell.hide((root.manifest && root.manifest.id) || "klipa.switchyard")
+      root.shell.hide((root.manifest && root.manifest.id) || "benviu.switchyard")
     else root.close()
   }
 
@@ -336,7 +336,7 @@ Item {
     anchors { top: true; bottom: true; left: true; right: true }
     color: "transparent"
     exclusionMode: ExclusionMode.Ignore
-    WlrLayershell.namespace: "klipa-switchyard"
+    WlrLayershell.namespace: "benviu-switchyard"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
@@ -404,6 +404,16 @@ Item {
             PanelSectionHeader {
               text: "Switchyard"
               foreground: Color.foreground
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              text: "Opens the sites you choose as web apps; everything else opens in your usual browser."
+              color: Qt.darker(Color.foreground, 1.4)
+              font.family: Style.font.family
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.Wrap
+              width: parent.width
             }
 
             Column {

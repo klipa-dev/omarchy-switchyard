@@ -5,10 +5,10 @@ load helpers
   [ "$status" -eq 0 ]
 }
 
-@test "manifest id is klipa.switchyard" {
+@test "manifest id is benviu.switchyard" {
   run jq -e -r '.id' "$REPO_ROOT/manifest.json"
   [ "$status" -eq 0 ]
-  [ "$output" = "klipa.switchyard" ]
+  [ "$output" = "benviu.switchyard" ]
 }
 
 @test "manifest schemaVersion is 1" {

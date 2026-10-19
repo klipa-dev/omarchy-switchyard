@@ -1,9 +1,9 @@
 {
-  "_comment": "Copy this to ~/.config/omarchy-switchyard/rules.json and edit. version is the rules-file format; leave it at 1. Each entry in rules is tried in order; the first whose host matches wins. A bare host (\"basecamp.com\") matches only that host; \"*.example.com\" matches example.com itself and any subdomain. target is a desktop id (\"chromium.desktop\", \"zen.desktop\", ...) or the word \"webapp\", which opens the link as a Chromium web-app window. A link that matches no rule, or any link while this file is missing, goes to the fallback browser in the sibling 'fallback' file, which 'omarchy-switchyard activate' writes and this file never touches.",
+  "_comment": "Copy this to ~/.config/omarchy-switchyard/rules.json and edit. version is the rules-file format; leave it at 1. Each entry in rules is tried in order; the first whose host matches wins. A host (\"basecamp.com\" or \"*.basecamp.com\", the same rule either way) matches that domain and all its subdomains; there's no way to match a host and exclude its subdomains. target is the word \"webapp\", which opens the link as a Chromium web-app window, or a desktop id (\"chromium.desktop\", \"zen.desktop\", ...). A link that matches no rule, or any link while this file is missing, goes to the fallback browser in the sibling 'fallback' file, which 'omarchy-switchyard activate' writes and this file never touches.",
   "version": 1,
   "rules": [
-    { "host": "*.google.com", "target": "chromium.desktop" },
     { "host": "basecamp.com", "target": "webapp" },
-    { "host": "github.com", "target": "zen.desktop" }
+    { "host": "*.youtube.com", "target": "webapp" },
+    { "host": "*.google.com", "target": "chromium.desktop" }
   ]
 }

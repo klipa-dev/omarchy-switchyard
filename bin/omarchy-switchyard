@@ -11,13 +11,17 @@ usage() {
   cat <<'EOF'
 Usage: omarchy-switchyard <command>
 
+Opens the sites you choose as web apps, and everything else in your usual
+browser.
+
 Commands:
   activate [--fallback <desktop-id>]  register Switchyard as the default browser
   deactivate                          restore the browser that was default before activate
   status [--json]                     show whether Switchyard is active, and recent log lines
   open [--dry-run] [flags] <url>      route and launch <url> the way a clicked link would
   rules list [--json]                 show the configured rules
-  rules add <host> <target>           add a rule, or replace the one for <host>
+  rules add <host> <target: webapp | <browser>.desktop>
+                                      add a rule, or replace the one for <host>
   rules remove <host>                 remove the rule for <host>
   fallback [<desktop-id>]             show, or set, the fallback browser
   browsers [--json]                   list installed browsers
