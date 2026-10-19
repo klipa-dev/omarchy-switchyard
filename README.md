@@ -99,6 +99,39 @@ when no default browser was recorded yet. `deactivate` restores the
 recorded fallback and leaves it on disk; it never deletes your rules or
 your fallback choice.
 
+## Settings panel
+
+A summoned panel inside `omarchy-shell` shows the same status the CLI does
+(active or not, the fallback browser) and your configured rules, each as
+`<host> → <target>` (a `webapp` target shows as "Web app window"). An
+"Activate" / "Deactivate" button toggles the plugin, and "Open rules file"
+opens `rules.json` in your editor. The panel never edits `rules.json`
+itself; every change runs through the CLI, so the panel and the command
+line stay in sync.
+
+Summon it with:
+
+```sh
+omarchy-shell shell toggle klipa.switchyard '{}'
+```
+
+Add a menu row for it in `~/.config/omarchy/extensions/omarchy-menu.jsonc`:
+
+```jsonc
+"switchyard": {
+  "icon": "󰖟",
+  "label": "Switchyard",
+  "action": "omarchy-shell shell toggle klipa.switchyard '{}'"
+}
+```
+
+Or bind a free key in `~/.config/hypr/bindings.conf` (pick a combination
+that isn't already taken):
+
+```
+bindd = SUPER SHIFT, S, Switchyard, exec, omarchy-shell shell toggle klipa.switchyard '{}'
+```
+
 ## Status and log
 
 ```sh

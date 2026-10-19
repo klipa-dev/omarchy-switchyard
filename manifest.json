@@ -6,6 +6,6 @@
   "author": "klipa",
   "license": "MIT",
   "description": "Routes clicked links to a browser by host rules",
-  "kinds": ["service"],
-  "entryPoints": { "service": "Service.qml" }
+  "kinds": ["service", "panel"],
+  "entryPoints": { "service": "Service.qml", "panel": "Panel.qml" }
 }
