@@ -42,7 +42,7 @@ xdg_settings() {
 
 # The fallback-browser note on activate, and the Chromium-web-apps warning,
 # use the same Chromium-family desktop-id list omarchy-launch-webapp does
-# (lib/launch.sh's switchyard_webapp_browser, A2, mirrors it too).
+# (lib/launch.sh's switchyard_webapp_browser mirrors it too).
 is_chromium_family() {
   case "$1" in
     chromium.desktop | google-chrome* | brave* | microsoft-edge* | opera* | vivaldi* | helium*) return 0 ;;

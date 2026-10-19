@@ -2,7 +2,8 @@
 REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
 
 # isolate_home sets up a throwaway HOME with the XDG dirs Switchyard reads
-# and writes, so no test ever touches the real machine (TASKS.md rule 9).
+# and writes, so no test ever touches the real machine's config, data,
+# state or default browser.
 isolate_home() {
   export HOME="$BATS_TEST_TMPDIR/home"
   mkdir -p "$HOME/.config" "$HOME/.local/share/applications" "$HOME/.local/state"

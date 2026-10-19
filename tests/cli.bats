@@ -8,7 +8,8 @@ setup() {
 
 # Captured once, before isolate_home has run for any test, so this is the
 # real machine's mimeapps.list -- the one file this whole suite must never
-# touch (TASKS.md rule 9).
+# touch: tests never change the real machine's config, data, state or
+# default browser.
 setup_file() {
   local real_mimeapps="${XDG_CONFIG_HOME:-$HOME/.config}/mimeapps.list"
   echo "$real_mimeapps" >"$BATS_FILE_TMPDIR/real-mimeapps-path"
