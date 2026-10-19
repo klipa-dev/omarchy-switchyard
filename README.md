@@ -105,9 +105,12 @@ A summoned panel inside `omarchy-shell` shows the same status the CLI does
 (active or not, the fallback browser) and your configured rules, each as
 `<host> → <target>` (a `webapp` target shows as "Web app window"). An
 "Activate" / "Deactivate" button toggles the plugin, and "Open rules file"
-opens `rules.json` in your editor. The panel never edits `rules.json`
-itself; every change runs through the CLI, so the panel and the command
-line stay in sync.
+opens `rules.json` in your editor. You can also add, edit and remove rules
+and pick the fallback browser from the panel itself, each from a dropdown
+of your installed browsers; "Edit" fills in a rule's host and target so
+"Add" can replace it, and "Remove" asks you to confirm first. The panel
+never edits `rules.json` itself; every change runs through the CLI, so the
+panel and the command line stay in sync.
 
 Summon it with:
 
