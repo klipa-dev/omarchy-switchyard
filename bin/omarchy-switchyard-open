@@ -25,6 +25,26 @@ source "$script_dir/../lib/router.sh"
 # shellcheck source=../lib/launch.sh
 source "$script_dir/../lib/launch.sh"
 
+# switchyard_run_launch <target> <url> <fallback-file> [browser-flags...] —
+# runs switchyard_launch into a tmp file, capturing its stderr into
+# launch_stderr (printed when non-empty) and its exit status into
+# launch_status. Both are left as plain (non-local) variables for the
+# caller to inspect.
+switchyard_run_launch() {
+  local err
+  err=$(mktemp)
+  launch_status=0
+  switchyard_launch "$@" 2>"$err" || launch_status=$?
+  launch_stderr=$(cat "$err")
+  rm -f "$err"
+  # An `if`, not `[[ ]] &&`: as the function's last statement, a false
+  # `&&` short-circuit would make the function itself return non-zero
+  # whenever there's no stderr to print, tripping set -e in the caller.
+  if [[ -n $launch_stderr ]]; then
+    printf '%s\n' "$launch_stderr" >&2
+  fi
+}
+
 url=""
 flags=()
 for arg in "$@"; do
@@ -70,7 +90,34 @@ if [[ $route_stderr == *"rules.json is invalid"* ]] && command -v omarchy-notifi
   omarchy-notification-send "Switchyard: rules.json is invalid, opening in $target" || true
 fi
 
-if [[ ${SWITCHYARD_DRY_RUN:-0} != 1 ]]; then
+switchyard_run_launch "$target" "$url" "$fallback_file" "${flags[@]}"
+
+# $SWITCHYARD_MISSING_TARGET means the resolved desktop id has no desktop
+# entry. Retry with the fallback browser as a normal window, unless the
+# target already is the fallback (then there is truly no browser to fall
+# back to).
+if [[ $launch_status -eq $SWITCHYARD_MISSING_TARGET ]]; then
+  fallback_desktop_id=$(_switchyard_fallback "$fallback_file")
+  if [[ $target != "$fallback_desktop_id" ]]; then
+    missing_id=${launch_stderr#switchyard: no desktop entry for }
+    notice="Switchyard: $missing_id is not installed, opening in $fallback_desktop_id"
+    command -v omarchy-notification-send >/dev/null 2>&1 && omarchy-notification-send "$notice" || true
+    printf '%s\n' "$notice" >&2
+
+    target=$fallback_desktop_id
+    reason="fallback:missing-target"
+
+    switchyard_run_launch "$target" "$url" "$fallback_file" "${flags[@]}"
+  fi
+fi
+
+# Skip the log write when the final attempt still returned
+# $SWITCHYARD_MISSING_TARGET: nothing was actually launched (the
+# double-failure case where the fallback browser itself has no desktop
+# entry either), so a "fallback:missing-target" line would misrepresent
+# that browser as having been opened. The exit status below still reports
+# the failure.
+if [[ ${SWITCHYARD_DRY_RUN:-0} != 1 ]] && [[ $launch_status -ne $SWITCHYARD_MISSING_TARGET ]]; then
   mkdir -p "$state_dir"
   log_file="$state_dir/log"
   timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -80,4 +127,4 @@ if [[ ${SWITCHYARD_DRY_RUN:-0} != 1 ]]; then
   mv "$tmp_log" "$log_file"
 fi
 
-switchyard_launch "$target" "$url" "$fallback_file" "${flags[@]}"
+exit "$launch_status"

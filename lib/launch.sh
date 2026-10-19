@@ -7,6 +7,12 @@ fail() {
   exit 1
 }
 
+# Exit status switchyard_launch returns when the resolved desktop id has no
+# desktop entry (distinct from fail's 1), so the handler can retry with the
+# fallback browser instead of failing outright. Named so the sentinel isn't
+# a bare literal in both this file and bin/omarchy-switchyard-open.
+SWITCHYARD_MISSING_TARGET=3
+
 # _switchyard_resolve_exec <desktop-id> — prints the first word of the
 # entry's Exec=, in the same search order lib/router.sh resolves a
 # fallback candidate from.
@@ -50,7 +56,10 @@ switchyard_webapp_browser() {
 # launches <target> (a desktop id, or "webapp") with <url>. A "--private"
 # flag among the browser flags is translated to the resolved browser's own
 # private-window flag (dropped for "webapp"). Prints the command line
-# instead of running it when SWITCHYARD_DRY_RUN=1.
+# instead of running it when SWITCHYARD_DRY_RUN=1. Returns
+# $SWITCHYARD_MISSING_TARGET when the resolved desktop id has no desktop
+# entry, so the handler can retry with the fallback browser instead of
+# failing outright.
 switchyard_launch() {
   local target=$1 url=$2 fallback_file=$3
   shift 3
@@ -78,7 +87,10 @@ switchyard_launch() {
   fi
 
   local exec_path
-  exec_path=$(_switchyard_resolve_exec "$desktop_id") || fail "no desktop entry resolves for $desktop_id"
+  if ! exec_path=$(_switchyard_resolve_exec "$desktop_id"); then
+    echo "switchyard: no desktop entry for $desktop_id" >&2
+    return "$SWITCHYARD_MISSING_TARGET"
+  fi
 
   local private_flag=""
   if ((want_private)); then

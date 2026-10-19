@@ -57,7 +57,8 @@ desktop id in `~/.config/omarchy-switchyard/fallback`, which `activate`
 writes from your current default browser (so a broken or missing
 `rules.json` can never lose it; a missing or invalid `rules.json` just
 means every link goes to the fallback, with a notification if the file is
-invalid).
+invalid). A rule whose browser isn't installed behaves the same way: the
+link opens in the fallback browser instead, with a notification.
 
 ## Activate
 
