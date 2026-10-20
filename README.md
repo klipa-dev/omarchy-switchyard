@@ -1,33 +1,76 @@
 # Switchyard
 
-Switchyard is an Omarchy shell plugin: click a link to a site you've chosen
-and it opens as a web app, in its own Chromium window with no address bar
-or tabs, the way an installed Omarchy web app does (`*.youtube.com → web
-app`). Click any other link and it opens in your usual browser instead.
-Sending a chosen site to a different browser, rather than opening it as a
-web app, is the other thing Switchyard does — handy if you run a
-non-Chromium browser as your default (Zen, Firefox, ...) but still need a
-site, or a Chromium-only web app, to run in Chromium. All of this happens
-without you ever seeing a picker.
+Open the sites you choose as web apps, from any link you click on Omarchy.
 
-## Install
+You probably run one browser as your default — Zen, Firefox, whatever you
+like. But a handful of sites are nicer as their own window: a video call, a
+Basecamp project, a work dashboard, with no address bar or tabs, the way an
+installed web app looks. Switchyard lets you say which sites get that
+treatment, and which browser the rest should open in, then takes over as
+the system's link handler so every click just goes to the right place.
+
+## Why you'd want it
+
+- A meeting link or a Basecamp task shared in chat opens as its own app
+  window, not another tab in your browser.
+- A site that only works well in Chromium opens there, even though your
+  default browser is Zen, Firefox, or anything else.
+- Everything you didn't add a rule for — search results, articles, random
+  links — keeps opening in your usual browser, exactly as before.
+- No picker ever appears. Switchyard decides once, from the rules you
+  wrote, and launches straight to the right place.
+
+## Quick start
+
+Install the plugin and put its CLI on your `PATH`:
 
 ```sh
 omarchy plugin add https://github.com/klipa-dev/omarchy-switchyard.git --enable
-~/.config/omarchy/plugins/benviu.switchyard/bin/omarchy-switchyard activate
-```
-
-Optionally, put the CLI on your `PATH` so you can run it as just
-`omarchy-switchyard`:
-
-```sh
 ln -s ~/.config/omarchy/plugins/benviu.switchyard/bin/omarchy-switchyard ~/.local/bin/omarchy-switchyard
 ```
+
+`omarchy plugin add` warns that plugins run unsandboxed and asks you to
+confirm, then ends with `Enabled benviu.switchyard`; the `ln -s` prints
+nothing.
+
+Take over as the default browser:
+
+```sh
+omarchy-switchyard activate
+```
+```
+Switchyard is the default browser; unmatched links open in zen.desktop
+```
+
+(`zen.desktop` here is whatever browser was already your default — Switchyard
+records it automatically, so you don't lose it.)
+
+Add your first rule:
+
+```sh
+omarchy-switchyard rules add youtube.com webapp
+```
+```
+Rule added: *.youtube.com → webapp
+Saved as *.youtube.com, which matches youtube.com and all its subdomains.
+```
+
+See what a click on a matching link would do, without opening anything:
+
+```sh
+omarchy-switchyard open --dry-run https://www.youtube.com/@omarchy
+```
+```
+setsid uwsm-app -- /usr/bin/chromium --app=https://www.youtube.com/@omarchy
+```
+
+That's the web app window about to open. Click a real YouTube link now and
+it opens the same way.
 
 ## Rules
 
 Switchyard reads `~/.config/omarchy-switchyard/rules.json`. Copy
-`rules.example.json` there and edit it:
+`rules.example.json` there and edit it by hand, or use the CLI below:
 
 ```json
 {
@@ -115,20 +158,29 @@ them ever hand-edit `rules.json`: each writes the whole file atomically. If
 `rules.json` itself is invalid JSON, every command that would otherwise
 write to it fails instead, telling you the file to fix by hand.
 
-## Activate
+## Command reference
 
-```sh
-omarchy-switchyard activate [--fallback <desktop-id>]   # take over as the default browser
-omarchy-switchyard deactivate                           # restore the previous default browser
-```
+| Command | What it does |
+| --- | --- |
+| `activate [--fallback <desktop-id>]` | Register Switchyard as the default browser. |
+| `deactivate` | Restore the browser that was default before `activate`. |
+| `status [--json]` | Show whether Switchyard is active, and recent log lines. |
+| `open [--dry-run] [flags] <url>` | Route and launch `<url>` the way a clicked link would. |
+| `rules list [--json]` | Show the configured rules. |
+| `rules add <host> <target>` | Add a rule, or replace the one for `<host>`. |
+| `rules remove <host>` | Remove the rule for `<host>`. |
+| `fallback [<desktop-id>]` | Show, or set, the fallback browser. |
+| `browsers [--json]` | List installed browsers. |
+| `--help`, `-h` | Show the usage summary. |
 
-`activate` records your current default browser as the fallback for links
-that match none of your rules, then registers Switchyard as the default
-instead. Run it again with `--fallback <desktop-id>` (for example
-`--fallback firefox.desktop`) to pick a different fallback, or to set one
-when no default browser was recorded yet. `deactivate` restores the
-recorded fallback and leaves it on disk; it never deletes your rules or
-your fallback choice.
+`activate --fallback <desktop-id>` picks a different browser to fall back
+to, or sets one when `activate` can't record a current default; without it,
+`activate` records whatever browser is already default. `deactivate` only
+restores that default — it leaves `rules.json` and `fallback` on disk, so
+reactivating later picks up where you left off. `status` shows the fallback
+browser, whether `rules.json` is present and how many rules it holds, and
+the last few lines of the routing log, which `omarchy-switchyard` keeps at
+`~/.local/state/omarchy-switchyard/log`, capped at 200 lines.
 
 ## Settings panel
 
@@ -166,33 +218,15 @@ that isn't already taken):
 bindd = SUPER SHIFT, S, Switchyard, exec, omarchy-shell shell toggle benviu.switchyard '{}'
 ```
 
-## Status and log
+## How it works
 
-```sh
-omarchy-switchyard status
-```
-
-prints whether Switchyard is the current default browser, the recorded
-fallback, whether `rules.json` is present and how many rules it has, and
-the last few lines of the routing log. Every routing decision — matched
-rule or fallback, and the browser it launched — is appended to
-`~/.local/state/omarchy-switchyard/log` (the last 200 lines are kept).
-Add `--json` for the same facts as a single JSON object, meant for
-scripts and the settings panel rather than reading by eye.
-
-## Update and uninstall
-
-```sh
-omarchy plugin update benviu.switchyard
-```
-
-To uninstall, deactivate first so your default browser is restored, then
-remove the plugin:
-
-```sh
-omarchy-switchyard deactivate
-omarchy plugin remove benviu.switchyard
-```
+Switchyard registers itself as your system's default browser, so every
+clicked link reaches its handler first. The handler checks the link's host
+against your rules and launches the matching browser or web app window;
+anything that matches no rule, or any link while `rules.json` is missing or
+broken, goes to the fallback browser you set when you ran `activate` — so a
+mistake in the rules file sends links to the fallback browser, with a
+notification, but never loses one.
 
 ## Limitations
 
@@ -215,6 +249,20 @@ omarchy plugin remove benviu.switchyard
   already-open window for the same site is not reused, because Chromium
   has no way to point an open app window at a new address.
 
+## Update and uninstall
+
+```sh
+omarchy plugin update benviu.switchyard
+```
+
+To uninstall, deactivate first so your default browser is restored, then
+remove the plugin:
+
+```sh
+omarchy-switchyard deactivate
+omarchy plugin remove benviu.switchyard
+```
+
 ## Development
 
 ```sh
@@ -226,3 +274,7 @@ Needs `bats`, `shellcheck`, `qmllint`, and an Omarchy install (for
 
 Tests set `SWITCHYARD_APPLICATIONS_DIRS` so they see only the desktop
 entries they create, never the real machine's.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
