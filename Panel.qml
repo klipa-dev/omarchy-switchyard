@@ -64,14 +64,36 @@ Item {
   property string pendingRemoveHost: ""
   property bool removeConfirmOpen: false
 
-  readonly property string statusText: root.active
-    ? "Active"
-    : "Not active (default browser: " + (root.defaultBrowser || "unknown") + ")"
-  readonly property string fallbackText: "Fallback: " + (root.hasFallback ? root.fallback : "(none)")
-  readonly property string actionButtonText: root.active ? "Deactivate" : "Activate"
+  // Looks a desktop id up in the browsers list fetched on open; falls back
+  // to the id itself when the id isn't (or isn't yet) known, e.g. right
+  // after open() before browsersProc has returned.
+  function browserName(id) {
+    for (var i = 0; i < root.browsers.length; i++) {
+      if (String(root.browsers[i].id) === String(id)) return String(root.browsers[i].name)
+    }
+    return String(id)
+  }
 
+  // Same lookup as browserName, but over targetOptions (which already
+  // carries "Web app window" for the webapp target), so a rule row shows
+  // the exact label its own Dropdown would.
   function targetLabel(target) {
-    return target === "webapp" ? "Web app window" : String(target)
+    for (var i = 0; i < root.targetOptions.length; i++) {
+      if (root.targetOptions[i].value === target) return root.targetOptions[i].label
+    }
+    return String(target)
+  }
+
+  function targetGlyph(target) {
+    return target === "webapp" ? "󰖟" : "󰖯"
+  }
+
+  // The browser unmatched links open in right now: the recorded fallback
+  // while active (that's what the handler routes to), the real OS default
+  // while not (Switchyard isn't in the loop at all).
+  function unmatchedBrowserLabel() {
+    var id = root.active ? (root.hasFallback ? root.fallback : "") : root.defaultBrowser
+    return id === "" ? "(none)" : root.browserName(id)
   }
 
   function open(payloadJson) {
@@ -386,7 +408,7 @@ Item {
 
         BorderSurface {
           id: card
-          width: Style.space(360)
+          width: Style.space(380)
           height: card.contentTopInset + card.contentBottomInset + content.implicitHeight
           color: Color.background
           radius: Style.cornerRadius
@@ -401,14 +423,57 @@ Item {
             anchors.leftMargin: card.contentLeftInset
             spacing: Style.space(14)
 
-            PanelSectionHeader {
-              text: "Switchyard"
-              foreground: Color.foreground
+            // Hero: web-app glyph, title, Active/Not active, and the browser
+            // unmatched links open in right now, with the on/off switch
+            // pinned to the trailing edge. `heroHost` exists only so the
+            // switch's trailingControl (a deferred Component whose bindings
+            // resolve `root` to PanelHero's own internal id of that name,
+            // not this file's) can reach panel state without naming `root`
+            // directly — the same indirection the tailscale panel uses.
+            Item {
+              id: heroHost
+              width: parent.width
+              implicitHeight: hero.implicitHeight
+
+              readonly property bool switchChecked: root.active
+              readonly property bool switchBusy: actionProc.running
+              readonly property string unmatchedBrowserLabel: root.unmatchedBrowserLabel()
+              function toggleActivation() { root.activateOrDeactivate() }
+
+              PanelHero {
+                id: hero
+                width: parent.width
+                title: "Switchyard"
+                meta: root.active ? "Active" : "Not active"
+                // Only show the pill when it is short enough that the
+                // title ("Switchyard") still renders in full beside it;
+                // the full sentence below always shows the name in full.
+                detail: heroHost.unmatchedBrowserLabel.length <= 18 ? heroHost.unmatchedBrowserLabel : ""
+                foreground: Color.foreground
+                fontFamily: Style.font.family
+                iconComponent: Component {
+                  Text {
+                    textFormat: Text.PlainText
+                    text: "󰖟"
+                    color: Color.foreground
+                    font.family: Style.font.family
+                    font.pixelSize: Style.font.display
+                  }
+                }
+                trailingControl: Component {
+                  ToggleSwitch {
+                    checked: heroHost.switchChecked
+                    busy: heroHost.switchBusy
+                    foreground: hero.foreground
+                    onToggled: heroHost.toggleActivation()
+                  }
+                }
+              }
             }
 
             Text {
               textFormat: Text.PlainText
-              text: "Opens the sites you choose as web apps; everything else opens in your usual browser."
+              text: "Unmatched links open in " + heroHost.unmatchedBrowserLabel
               color: Qt.darker(Color.foreground, 1.4)
               font.family: Style.font.family
               font.pixelSize: Style.font.bodySmall
@@ -416,54 +481,13 @@ Item {
               width: parent.width
             }
 
-            Column {
+            Dropdown {
+              id: fallbackDropdown
               width: parent.width
-              spacing: Style.space(4)
-
-              Text {
-                textFormat: Text.PlainText
-                text: root.statusText
-                color: Color.foreground
-                font.family: Style.font.family
-                font.pixelSize: Style.font.body
-                wrapMode: Text.Wrap
-                width: parent.width
-              }
-
-              Text {
-                textFormat: Text.PlainText
-                text: root.fallbackText
-                color: Color.foreground
-                font.family: Style.font.family
-                font.pixelSize: Style.font.bodySmall
-              }
-
-              Dropdown {
-                id: fallbackDropdown
-                width: parent.width
-                label: "Fallback"
-                value: root.fallback
-                options: root.fallbackOptions
-                onChanged: function(v) { root.setFallback(v) }
-              }
-            }
-
-            Button {
-              text: root.actionButtonText
-              bordered: true
-              enabled: !actionProc.running
-              onClicked: root.activateOrDeactivate()
-            }
-
-            Text {
-              textFormat: Text.PlainText
-              visible: root.error !== ""
-              text: root.error
-              color: Color.accent
-              font.family: Style.font.family
-              font.pixelSize: Style.font.bodySmall
-              wrapMode: Text.Wrap
-              width: parent.width
+              label: "Fallback browser"
+              value: root.fallback
+              options: root.fallbackOptions
+              onChanged: function(v) { root.setFallback(v) }
             }
 
             PanelSeparator {}
@@ -480,63 +504,32 @@ Item {
               Text {
                 textFormat: Text.PlainText
                 visible: root.rules.length === 0
-                text: "No rules configured"
+                text: "No rules yet. Add a site below to open it as a web app."
                 color: Qt.darker(Color.foreground, 1.4)
                 font.family: Style.font.family
                 font.pixelSize: Style.font.bodySmall
                 font.italic: true
+                wrapMode: Text.Wrap
+                width: parent.width
               }
 
               Repeater {
                 model: root.rules
 
-                Row {
+                RuleRow {
                   required property var modelData
-                  spacing: Style.space(8)
                   width: parent.width
-
-                  Text {
-                    textFormat: Text.PlainText
-                    text: modelData.host || ""
-                    color: Color.foreground
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.bodySmall
-                  }
-
-                  Text {
-                    textFormat: Text.PlainText
-                    text: "→"
-                    color: Qt.darker(Color.foreground, 1.4)
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.bodySmall
-                  }
-
-                  Text {
-                    textFormat: Text.PlainText
-                    text: root.targetLabel(modelData.target)
-                    color: Color.foreground
-                    font.family: Style.font.family
-                    font.pixelSize: Style.font.bodySmall
-                  }
-
-                  Button {
-                    text: "Edit"
-                    bordered: true
-                    fontSize: Style.font.bodySmall
-                    onClicked: root.editRule(modelData.host, modelData.target)
-                  }
-
-                  Button {
-                    text: "Remove"
-                    bordered: true
-                    fontSize: Style.font.bodySmall
-                    onClicked: root.requestRemove(modelData.host)
-                  }
+                  host: modelData.host || ""
+                  target: modelData.target || ""
                 }
               }
             }
 
+            // Add row: host, target, and an icon button to add it (or,
+            // after Edit fills the row, to replace the existing rule for
+            // that host) — one line, filling the card.
             Item {
+              id: addRow
               width: parent.width
               height: Math.max(hostField.implicitHeight, targetDropdown.implicitHeight, addButton.implicitHeight)
 
@@ -546,7 +539,7 @@ Item {
                 anchors.right: targetDropdown.left
                 anchors.rightMargin: Style.space(8)
                 anchors.verticalCenter: parent.verticalCenter
-                placeholderText: "*.example.com"
+                placeholderText: "youtube.com"
                 onAccepted: root.addRule()
               }
 
@@ -561,12 +554,15 @@ Item {
                 options: root.targetOptions
               }
 
-              Button {
+              PanelActionButton {
                 id: addButton
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                text: "Add"
+                size: Style.spacing.controlHeight
                 bordered: true
+                iconText: "󰐕"
+                tooltipText: "Add rule"
+                foreground: Color.foreground
                 enabled: !addProc.running
                 onClicked: root.addRule()
               }
@@ -583,24 +579,24 @@ Item {
               width: parent.width
             }
 
+            Text {
+              textFormat: Text.PlainText
+              visible: root.error !== ""
+              text: root.error
+              color: Color.urgent
+              font.family: Style.font.family
+              font.pixelSize: Style.font.bodySmall
+              wrapMode: Text.Wrap
+              width: parent.width
+            }
+
             PanelSeparator {}
 
-            Row {
-              width: parent.width
-              spacing: Style.space(10)
-
-              Button {
-                text: "Open rules file"
-                bordered: true
-                enabled: !editorProc.running
-                onClicked: root.launchRulesEditor()
-              }
-
-              Button {
-                text: "Close"
-                bordered: true
-                onClicked: root.dismiss()
-              }
+            Button {
+              text: "Open rules file"
+              bordered: true
+              enabled: !editorProc.running
+              onClicked: root.launchRulesEditor()
             }
           }
         }
@@ -617,6 +613,91 @@ Item {
         foreground: Color.foreground
         onCanceled: root.cancelRemove()
         onConfirmed: root.confirmRemove()
+      }
+    }
+  }
+
+  // One rule: the host, a dim glyph + label for its target, then Edit and
+  // Remove as right-aligned icon buttons. `host`/`target` (not `modelData`)
+  // so a row reads the same whether the Repeater above or a future caller
+  // feeds it.
+  component RuleRow: Item {
+    id: ruleRow
+    required property string host
+    required property string target
+
+    height: Math.max(hostText.implicitHeight, actions.implicitHeight)
+
+    Text {
+      id: hostText
+      textFormat: Text.PlainText
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      anchors.right: targetRow.left
+      anchors.rightMargin: Style.space(8)
+      text: ruleRow.host
+      color: Color.foreground
+      font.family: Style.font.family
+      font.pixelSize: Style.font.body
+      elide: Text.ElideRight
+    }
+
+    // A plain Item, not a Row: the label needs to fill whatever width the
+    // glyph leaves inside a fixed total, which Row can't express (its
+    // children size themselves, and a declared Row width doesn't clip them).
+    Item {
+      id: targetRow
+      anchors.right: actions.left
+      anchors.rightMargin: Style.space(8)
+      anchors.verticalCenter: parent.verticalCenter
+      width: Style.space(150)
+      height: Math.max(targetGlyphText.implicitHeight, targetLabelText.implicitHeight)
+
+      Text {
+        id: targetGlyphText
+        textFormat: Text.PlainText
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        text: root.targetGlyph(ruleRow.target)
+        color: Qt.darker(Color.foreground, 1.4)
+        font.family: Style.font.family
+        font.pixelSize: Style.font.bodySmall
+      }
+
+      Text {
+        id: targetLabelText
+        textFormat: Text.PlainText
+        anchors.left: targetGlyphText.right
+        anchors.leftMargin: Style.space(6)
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        text: root.targetLabel(ruleRow.target)
+        color: Qt.darker(Color.foreground, 1.4)
+        font.family: Style.font.family
+        font.pixelSize: Style.font.bodySmall
+        elide: Text.ElideRight
+      }
+    }
+
+    Row {
+      id: actions
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: Style.space(4)
+
+      PanelActionButton {
+        iconText: "󰏫"
+        tooltipText: "Edit"
+        foreground: Color.foreground
+        onClicked: root.editRule(ruleRow.host, ruleRow.target)
+      }
+
+      PanelActionButton {
+        iconText: "󰅙"
+        tooltipText: "Remove"
+        foreground: Color.foreground
+        hoverColor: Color.urgent
+        onClicked: root.requestRemove(ruleRow.host)
       }
     }
   }
