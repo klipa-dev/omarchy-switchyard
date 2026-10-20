@@ -33,7 +33,8 @@ ln -s ~/.config/omarchy/plugins/benviu.switchyard/bin/omarchy-switchyard ~/.loca
 
 `omarchy plugin add` warns that plugins run unsandboxed and asks you to
 confirm, then ends with `Enabled benviu.switchyard`; the `ln -s` prints
-nothing.
+nothing. Run `omarchy-restart-shell` once so the shell picks up the new
+plugin (it keeps your windows).
 
 Take over as the default browser:
 
@@ -246,6 +247,9 @@ notification, but never loses one.
 ```sh
 omarchy plugin update benviu.switchyard
 ```
+
+Run `omarchy-restart-shell` once so the shell picks up the update (it
+keeps your windows).
 
 To uninstall, deactivate first so your default browser is restored, then
 remove the plugin:
