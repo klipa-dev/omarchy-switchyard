@@ -186,11 +186,11 @@ cmd_activate() {
   if [[ -n "$fallback_arg" ]]; then
     mkdir -p "$config_dir"
     printf '%s\n' "$fallback_arg" >"$config_dir/fallback"
+  elif [[ -f "$config_dir/fallback" ]]; then
+    : # already recorded; keep it
   elif [[ -n "$current" && "$current" != "$desktop_id" ]]; then
     mkdir -p "$config_dir"
     printf '%s\n' "$current" >"$config_dir/fallback"
-  elif [[ -f "$config_dir/fallback" ]]; then
-    : # already recorded; keep it
   else
     fail "no fallback browser known; run: omarchy-switchyard activate --fallback <desktop-id>"
   fi

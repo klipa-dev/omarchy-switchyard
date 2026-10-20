@@ -154,8 +154,9 @@ file to fix by hand.
 
 `activate --fallback <desktop-id>` picks a different browser to fall back
 to, or sets one when `activate` can't record a current default; without it,
-`activate` records whatever browser is already default. `deactivate` only
-restores that default — it leaves `rules.json` and `fallback` on disk, so
+`activate` keeps the fallback you already picked, recording your current
+default browser only the first time, when none is recorded yet. `deactivate`
+only restores that default — it leaves `rules.json` and `fallback` on disk, so
 reactivating later picks up where you left off. `status` shows the fallback
 browser, whether `rules.json` is present and how many rules it holds, and
 the last few lines of the routing log, which `omarchy-switchyard` keeps at
@@ -169,9 +170,10 @@ A summoned panel inside `omarchy-shell` shows whether Switchyard is active,
 with a switch to turn it on or off, and names the browser unmatched links
 open in right now. A "Fallback browser" dropdown picks the browser
 unmatched links open in while Switchyard is active. While it is inactive
-the panel shows your OS default instead, and turning Switchyard on
-records whatever is default then, so pick the fallback after turning it
-on. Below it is your rules list, each rule with icon buttons to edit or
+the panel shows your OS default instead; turning Switchyard on keeps the
+fallback you already picked, recording your OS default only the first
+time, when no fallback has been set yet. Below it is your rules list,
+each rule with icon buttons to edit or
 remove it (removing asks you to confirm first). One add row — a host
 field, a target dropdown and an icon button — adds a new rule, or
 replaces one after Edit fills the row; "Open rules file" opens

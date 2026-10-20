@@ -98,6 +98,53 @@ teardown_file() {
   [[ "$output" == *"open in Chromium (not brave-browser.desktop)"* ]]
 }
 
+@test "a fallback set with fallback <id> while inactive survives activate" {
+  seed_default_browser zen.desktop
+  mkdir -p "$XDG_DATA_HOME/applications"
+  cat >"$XDG_DATA_HOME/applications/chromium.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Chromium
+Exec=/bin/true %u
+EOF
+  "$CLI" fallback chromium.desktop
+
+  run "$CLI" activate
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"unmatched links open in chromium.desktop"* ]]
+  [ "$(cat "$XDG_CONFIG_HOME/omarchy-switchyard/fallback")" = "chromium.desktop" ]
+}
+
+@test "activate --fallback overrides an existing recorded fallback" {
+  seed_default_browser zen.desktop
+  mkdir -p "$XDG_DATA_HOME/applications"
+  cat >"$XDG_DATA_HOME/applications/chromium.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Chromium
+Exec=/bin/true %u
+EOF
+  "$CLI" fallback chromium.desktop
+
+  run "$CLI" activate --fallback zen.desktop
+  [ "$status" -eq 0 ]
+  [ "$(cat "$XDG_CONFIG_HOME/omarchy-switchyard/fallback")" = "zen.desktop" ]
+}
+
+@test "a deactivate/activate cycle restores and keeps the same fallback browser" {
+  seed_default_browser zen.desktop
+  "$CLI" activate
+  "$CLI" deactivate
+
+  run "$CLI" activate
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"unmatched links open in zen.desktop"* ]]
+  [ "$(cat "$XDG_CONFIG_HOME/omarchy-switchyard/fallback")" = "zen.desktop" ]
+
+  run env -u BROWSER xdg-settings get default-web-browser
+  [ "$output" = "omarchy-switchyard.desktop" ]
+}
+
 @test "activate --fallback chromium.desktop records it and prints no web-app note" {
   seed_default_browser zen.desktop
   mkdir -p "$XDG_DATA_HOME/applications"
