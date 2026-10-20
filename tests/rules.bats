@@ -202,6 +202,20 @@ EOF
   [ "$output" = '["*.a.com","*.youtube.com","*.b.com","*.c.com"]' ]
 }
 
+@test "add rejects omarchy-switchyard.desktop as a target: it is Switchyard itself" {
+  cat >"$XDG_DATA_HOME/applications/omarchy-switchyard.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Switchyard
+Exec=$REPO_ROOT/bin/omarchy-switchyard-open %u
+EOF
+
+  run "$CLI" rules add loop.example omarchy-switchyard.desktop
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"omarchy-switchyard.desktop is Switchyard itself; choose a browser"* ]]
+  [ ! -f "$(rules_file)" ]
+}
+
 @test "add rejects an unknown target and changes nothing" {
   run "$CLI" rules add github.com nope.desktop
   [ "$status" -eq 1 ]
@@ -265,6 +279,20 @@ EOF
 @test "remove fails when there is no rules file" {
   run "$CLI" rules remove github.com
   [ "$status" -eq 1 ]
+}
+
+@test "remove matches a hand-written host the validator would reject by exact string" {
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  cat >"$(rules_file)" <<'EOF'
+{"version": 1, "rules": [{"host": "localhost", "target": "webapp"}]}
+EOF
+
+  run "$CLI" rules remove localhost
+  [ "$status" -eq 0 ]
+  [ "$output" = "Rule removed: localhost" ]
+
+  run jq -c '.rules' "$(rules_file)"
+  [ "$output" = '[]' ]
 }
 
 @test "remove with a bare host removes a *.-form rule, and the reverse" {

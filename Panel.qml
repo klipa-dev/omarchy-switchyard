@@ -32,11 +32,12 @@ Item {
       : (Quickshell.env("HOME") + "/.config/omarchy/plugins/benviu.switchyard/")
   }
   readonly property string cliPath: pluginDir + "bin/omarchy-switchyard"
-  readonly property string rulesPath: {
+  readonly property string configDir: {
     var configHome = Quickshell.env("XDG_CONFIG_HOME")
     var base = (configHome && configHome.length > 0) ? configHome : (Quickshell.env("HOME") + "/.config")
-    return base + "/omarchy-switchyard/rules.json"
+    return base + "/omarchy-switchyard"
   }
+  readonly property string rulesPath: root.configDir + "/rules.json"
 
   property bool active: false
   property string defaultBrowser: ""
@@ -132,9 +133,9 @@ Item {
   }
 
   function launchRulesEditor() {
-    if (editorProc.running) return
+    if (editorProc.running || mkdirProc.running) return
     if (root.error !== root.rulesInvalidMessage) root.error = ""
-    editorProc.running = true
+    mkdirProc.running = true
   }
 
   function refreshBrowsers() {
@@ -169,6 +170,10 @@ Item {
   function requestRemove(host) {
     root.pendingRemoveHost = host
     root.removeConfirmOpen = true
+    // The host field (or a Dropdown trigger) may hold focus when Remove
+    // is clicked; keyCatcher's Keys.priority only reaches it, and so the
+    // confirm dialog, once keyCatcher itself has focus.
+    keyCatcher.forceActiveFocus()
   }
 
   function cancelRemove() {
@@ -250,6 +255,23 @@ Item {
     onExited: function(exitCode) {
       if (exitCode !== 0 && root.error === "") root.error = "omarchy-switchyard failed"
       root.refreshStatus()
+    }
+  }
+
+  // "Open rules file" may run before anything has ever created
+  // configDir (no activate, no rule added yet): mkdirProc makes sure it
+  // exists before editorProc tries to open a file inside it, so saving a
+  // brand new rules.json doesn't fail for a missing directory.
+  Process {
+    id: mkdirProc
+    command: ["mkdir", "-p", root.configDir]
+    stderr: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: if (String(text || "").trim() !== "") root.error = String(text).trim()
+    }
+    onExited: function(exitCode) {
+      if (exitCode === 0) editorProc.running = true
+      else if (root.error === "") root.error = "Could not open rules.json"
     }
   }
 

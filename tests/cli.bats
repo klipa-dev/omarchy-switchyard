@@ -46,6 +46,22 @@ teardown_file() {
   [ "$output" = "Exec=$REPO_ROOT/bin/omarchy-switchyard-open %u" ]
 }
 
+@test "activate writes a correct Exec= even when the handler's path contains # and &" {
+  seed_default_browser zen.desktop
+  local weird_dir="$HOME/han#dler&dir"
+  mkdir -p "$weird_dir/bin" "$weird_dir/lib" "$weird_dir/share"
+  cp "$REPO_ROOT/bin/omarchy-switchyard" "$REPO_ROOT/bin/omarchy-switchyard-open" "$weird_dir/bin/"
+  cp "$REPO_ROOT/lib/desktop.sh" "$REPO_ROOT/lib/router.sh" "$REPO_ROOT/lib/launch.sh" "$weird_dir/lib/"
+  cp "$REPO_ROOT/share/omarchy-switchyard.desktop" "$weird_dir/share/"
+  chmod +x "$weird_dir/bin/omarchy-switchyard" "$weird_dir/bin/omarchy-switchyard-open"
+
+  run "$weird_dir/bin/omarchy-switchyard" activate
+  [ "$status" -eq 0 ]
+
+  run grep '^Exec=' "$XDG_DATA_HOME/applications/omarchy-switchyard.desktop"
+  [ "$output" = "Exec=$weird_dir/bin/omarchy-switchyard-open %u" ]
+}
+
 @test "activate records the previous default as the fallback" {
   seed_default_browser zen.desktop
   "$CLI" activate
@@ -107,6 +123,28 @@ EOF
   run env -u BROWSER xdg-settings get default-web-browser
   [ "$output" = "zen.desktop" ]
   [ ! -f "$XDG_CONFIG_HOME/omarchy-switchyard/fallback" ]
+  [ ! -f "$XDG_DATA_HOME/applications/omarchy-switchyard.desktop" ]
+}
+
+@test "activate --fallback omarchy-switchyard.desktop refuses it as Switchyard itself and changes nothing" {
+  seed_default_browser zen.desktop
+  cat >"$XDG_DATA_HOME/applications/omarchy-switchyard.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Switchyard
+Exec=$REPO_ROOT/bin/omarchy-switchyard-open %u
+EOF
+  local before
+  before=$(cat "$XDG_DATA_HOME/applications/omarchy-switchyard.desktop")
+
+  run "$CLI" activate --fallback omarchy-switchyard.desktop
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"omarchy-switchyard.desktop is Switchyard itself; choose a browser"* ]]
+
+  run env -u BROWSER xdg-settings get default-web-browser
+  [ "$output" = "zen.desktop" ]
+  [ ! -f "$XDG_CONFIG_HOME/omarchy-switchyard/fallback" ]
+  [ "$(cat "$XDG_DATA_HOME/applications/omarchy-switchyard.desktop")" = "$before" ]
 }
 
 @test "activate with no previous default and no recorded fallback fails with the --fallback hint" {
@@ -117,6 +155,20 @@ EOF
   run "$CLI" activate
   [ "$status" -eq 1 ]
   [[ "$output" == *"--fallback <desktop-id>"* ]]
+}
+
+@test "fallback omarchy-switchyard.desktop refuses it as Switchyard itself and changes nothing" {
+  cat >"$XDG_DATA_HOME/applications/omarchy-switchyard.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Switchyard
+Exec=$REPO_ROOT/bin/omarchy-switchyard-open %u
+EOF
+
+  run "$CLI" fallback omarchy-switchyard.desktop
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"omarchy-switchyard.desktop is Switchyard itself; choose a browser"* ]]
+  [ ! -f "$XDG_CONFIG_HOME/omarchy-switchyard/fallback" ]
 }
 
 @test "deactivate restores the recorded fallback" {

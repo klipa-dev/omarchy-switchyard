@@ -159,7 +159,9 @@ restores that default — it leaves `rules.json` and `fallback` on disk, so
 reactivating later picks up where you left off. `status` shows the fallback
 browser, whether `rules.json` is present and how many rules it holds, and
 the last few lines of the routing log, which `omarchy-switchyard` keeps at
-`~/.local/state/omarchy-switchyard/log`, capped at 200 lines.
+`~/.local/state/omarchy-switchyard/log`, capped at 200 lines; each line
+holds the time, the clicked link's host, the target it opened and the
+reason, never the full link (a query string can carry a magic-login token).
 
 ## Settings panel
 
@@ -230,6 +232,9 @@ notification, but never loses one.
 - Each clicked link opens a new web-app window at that link; an
   already-open window for the same site is not reused, because Chromium
   has no way to point an open app window at a new address.
+- A browser whose desktop entry runs through a wrapper (`flatpak run ...`,
+  `env ...`) can't be launched: Switchyard resolves only the first word of
+  `Exec=`, the same limit Omarchy's own launcher has.
 
 ## Update and uninstall
 

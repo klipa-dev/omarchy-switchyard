@@ -61,7 +61,9 @@ switchyard_webapp_browser() {
 # instead of running it when SWITCHYARD_DRY_RUN=1. Returns
 # $SWITCHYARD_MISSING_TARGET when the resolved desktop id has no desktop
 # entry, so the handler can retry with the fallback browser instead of
-# failing outright.
+# failing outright; the same when the resolved desktop id is Switchyard's
+# own (a hand-edited rules.json or fallback file naming it), which is
+# refused outright rather than launched, to avoid looping.
 switchyard_launch() {
   local target=$1 url=$2 fallback_file=$3
   shift 3
@@ -86,6 +88,11 @@ switchyard_launch() {
     other_flags=()
   else
     desktop_id=$target
+  fi
+
+  if [[ $desktop_id == "omarchy-switchyard.desktop" ]]; then
+    echo "switchyard: refusing to launch Switchyard itself" >&2
+    return "$SWITCHYARD_MISSING_TARGET"
   fi
 
   local exec_path

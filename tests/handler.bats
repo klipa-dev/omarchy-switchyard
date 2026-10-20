@@ -130,7 +130,7 @@ EOF
   chmod +x "$stub_dir/uwsm-app"
   PATH="$stub_dir:$PATH" run "$handler" "https://example.com"
   [ "$status" -eq 0 ]
-  grep -q $'\thttps://example.com\tchromium.desktop\tfallback:missing-target' "$XDG_STATE_HOME/omarchy-switchyard/log"
+  grep -q $'\texample.com\tchromium.desktop\tfallback:missing-target' "$XDG_STATE_HOME/omarchy-switchyard/log"
 }
 
 @test "a webapp rule falls back to the fallback browser as a normal window when the webapp browser isn't installed" {
@@ -200,5 +200,96 @@ EOF
   PATH="$stub_dir:$PATH" run "$handler" "https://example.com"
   [ "$status" -eq 0 ]
   [ -f "$XDG_STATE_HOME/omarchy-switchyard/log" ]
-  grep -q $'\thttps://example.com\tchromium.desktop\tfallback' "$XDG_STATE_HOME/omarchy-switchyard/log"
+  grep -q $'\texample.com\tchromium.desktop\tfallback' "$XDG_STATE_HOME/omarchy-switchyard/log"
+}
+
+@test "the log line holds the host only, never the full URL or its query string" {
+  fake_browser chromium.desktop
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  echo "chromium.desktop" >"$XDG_CONFIG_HOME/omarchy-switchyard/fallback"
+
+  stub_dir="$BATS_TEST_TMPDIR/stubbin"
+  mkdir -p "$stub_dir"
+  cat >"$stub_dir/uwsm-app" <<'EOF'
+#!/bin/bash
+shift
+exec "$@"
+EOF
+  chmod +x "$stub_dir/uwsm-app"
+  PATH="$stub_dir:$PATH" run "$handler" "https://example.com/login?token=secret-magic-link"
+  [ "$status" -eq 0 ]
+  grep -q $'\texample.com\tchromium.desktop\tfallback' "$XDG_STATE_HOME/omarchy-switchyard/log"
+  run grep "secret-magic-link" "$XDG_STATE_HOME/omarchy-switchyard/log"
+  [ "$status" -ne 0 ]
+}
+
+@test "the log line holds - for the host when the handler runs with no URL" {
+  fake_browser chromium.desktop
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  echo "chromium.desktop" >"$XDG_CONFIG_HOME/omarchy-switchyard/fallback"
+
+  stub_dir="$BATS_TEST_TMPDIR/stubbin"
+  mkdir -p "$stub_dir"
+  cat >"$stub_dir/uwsm-app" <<'EOF'
+#!/bin/bash
+shift
+exec "$@"
+EOF
+  chmod +x "$stub_dir/uwsm-app"
+  PATH="$stub_dir:$PATH" run "$handler"
+  [ "$status" -eq 0 ]
+  grep -q $'\t-\tchromium.desktop\tfallback' "$XDG_STATE_HOME/omarchy-switchyard/log"
+}
+
+@test "a rule routing to Switchyard's own desktop id falls back instead of looping, with the refusing line on stderr" {
+  fake_browser zen.desktop
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  echo "zen.desktop" >"$XDG_CONFIG_HOME/omarchy-switchyard/fallback"
+  cat >"$XDG_CONFIG_HOME/omarchy-switchyard/rules.json" <<'EOF'
+{ "version": 1, "rules": [ { "host": "loop.example", "target": "omarchy-switchyard.desktop" } ] }
+EOF
+
+  run --separate-stderr "$handler" --dry-run "https://loop.example/"
+  [ "$status" -eq 0 ]
+  [ "$output" = "setsid uwsm-app -- $HOME/fake-bin/zen.desktop https://loop.example/" ]
+  [[ "$stderr" == *"switchyard: refusing to launch Switchyard itself"* ]]
+}
+
+@test "a non-dry run with a rule to Switchyard's own desktop id launches the fallback instead and logs fallback:self" {
+  fake_browser chromium.desktop
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  echo "chromium.desktop" >"$XDG_CONFIG_HOME/omarchy-switchyard/fallback"
+  cat >"$XDG_CONFIG_HOME/omarchy-switchyard/rules.json" <<'EOF'
+{ "version": 1, "rules": [ { "host": "loop.example", "target": "omarchy-switchyard.desktop" } ] }
+EOF
+
+  stub_dir="$BATS_TEST_TMPDIR/stubbin"
+  mkdir -p "$stub_dir"
+  cat >"$stub_dir/uwsm-app" <<'EOF'
+#!/bin/bash
+shift
+exec "$@"
+EOF
+  chmod +x "$stub_dir/uwsm-app"
+  PATH="$stub_dir:$PATH" run "$handler" "https://loop.example/path?token=secret"
+  [ "$status" -eq 0 ]
+  [ -f "$HOME/fake-bin/chromium.desktop.args" ]
+  grep -q "https://loop.example/path?token=secret" "$HOME/fake-bin/chromium.desktop.args"
+  grep -q $'\tloop.example\tchromium.desktop\tfallback:self' "$XDG_STATE_HOME/omarchy-switchyard/log"
+}
+
+@test "a fallback file naming Switchyard's own desktop id is skipped, falling back to the real default browser" {
+  fake_browser zen.desktop
+  mkdir -p "$XDG_CONFIG_HOME/omarchy-switchyard"
+  echo "omarchy-switchyard.desktop" >"$XDG_CONFIG_HOME/omarchy-switchyard/fallback"
+  cat >"$XDG_CONFIG_HOME/mimeapps.list" <<EOF
+[Default Applications]
+text/html=zen.desktop
+x-scheme-handler/http=zen.desktop
+x-scheme-handler/https=zen.desktop
+EOF
+
+  run --separate-stderr "$handler" --dry-run "https://example.com"
+  [ "$status" -eq 0 ]
+  [ "$output" = "setsid uwsm-app -- $HOME/fake-bin/zen.desktop https://example.com" ]
 }

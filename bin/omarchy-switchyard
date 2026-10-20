@@ -65,10 +65,13 @@ desktop_entry_exists() {
 }
 
 # valid_desktop_id <id> — a desktop id that ends in ".desktop" and resolves
-# to an installed entry.
+# to an installed entry; fails outright (not just returns 1) for Switchyard's
+# own desktop id, since launching it would run the handler through itself
+# without end.
 valid_desktop_id() {
   local id="$1"
   [[ "$id" == *.desktop ]] || return 1
+  [[ "$id" == "$desktop_id" ]] && fail "$desktop_id is Switchyard itself; choose a browser"
   desktop_entry_exists "$id"
 }
 
@@ -162,14 +165,25 @@ cmd_activate() {
   [[ "$handler" == *[[:space:]]* ]] && fail "handler path contains whitespace: $handler"
   [[ -x "$handler" ]] || fail "handler is not executable: $handler"
 
+  if [[ -n "$fallback_arg" ]]; then
+    valid_desktop_id "$fallback_arg" || fail "no desktop entry found for $fallback_arg"
+  fi
+
   mkdir -p "$apps_dir"
-  sed "s#__HANDLER__#$handler#" "$template" >"$apps_dir/$desktop_id"
+  local template_text handler_escaped
+  template_text=$(<"$template")
+  # Bash (5.2+) treats a literal "&" in a pattern substitution's
+  # replacement as "the matched text" (its patsub_replacement option,
+  # on by default) the same way sed does; escape "\" and "&" so a
+  # handler path containing either lands in the desktop entry verbatim.
+  handler_escaped="${handler//\\/\\\\}"
+  handler_escaped="${handler_escaped//&/\\&}"
+  printf '%s\n' "${template_text//__HANDLER__/$handler_escaped}" >"$apps_dir/$desktop_id"
 
   local current
   current=$(xdg_settings get default-web-browser || true)
 
   if [[ -n "$fallback_arg" ]]; then
-    desktop_entry_exists "$fallback_arg" || fail "no desktop entry found for $fallback_arg"
     mkdir -p "$config_dir"
     printf '%s\n' "$fallback_arg" >"$config_dir/fallback"
   elif [[ -n "$current" && "$current" != "$desktop_id" ]]; then
@@ -242,7 +256,7 @@ cmd_rules() {
       host=$(normalize_host "$raw_host")
       if [[ "$target" != "webapp" ]]; then
         [[ "$target" == *.desktop ]] || fail "target must be webapp or a .desktop id: $target"
-        desktop_entry_exists "$target" || fail "no desktop entry for $target"
+        valid_desktop_id "$target" || fail "no desktop entry for $target"
       fi
 
       local doc
@@ -313,21 +327,30 @@ cmd_rules() {
       ;;
     remove)
       [[ $# -eq 1 ]] || fail "rules remove: usage: rules remove <host>"
-      local raw_host="$1" host
-      host=$(normalize_host "$raw_host")
+      local raw_host="$1" host=""
+      host=$(normalize_host "$raw_host" 2>/dev/null) || true
       local doc
       doc=$(rules_doc)
 
       # Collect every rule whose host normalises to the same pattern (a
       # file left over from the old exact-only-matching era can hold both
       # "youtube.com" and "www.youtube.com" as separate entries); all of
-      # them are removed in one write.
+      # them are removed in one write. When the typed host itself isn't a
+      # valid_host (e.g. a hand-written "localhost" rule the validator
+      # would reject if typed to "rules add"), normalize_host above has no
+      # canonical form to compare against ($host is empty), so fall back
+      # to an exact string match on the stored host: the only way such a
+      # rule can ever be removed.
       local -a match_idx=()
       local idx ehost enorm
       while IFS=$'\t' read -r idx ehost; do
         [[ -n "$idx" ]] || continue
-        enorm=$(normalize_host "$ehost" 2>/dev/null) || continue
-        [[ "$enorm" == "$host" ]] && match_idx+=("$idx")
+        if [[ -n "$host" ]]; then
+          enorm=$(normalize_host "$ehost" 2>/dev/null) || continue
+          [[ "$enorm" == "$host" ]] && match_idx+=("$idx")
+        else
+          [[ "$ehost" == "$raw_host" ]] && match_idx+=("$idx")
+        fi
       done < <(jq -r '.rules | to_entries[] | "\(.key)\t\(.value.host)"' <<<"$doc")
 
       ((${#match_idx[@]})) || fail "no rule for host: $raw_host"
@@ -336,7 +359,7 @@ cmd_rules() {
       ids_json="[$(IFS=,; echo "${match_idx[*]}")]"
       write_rules_doc "$(jq -c --argjson ids "$ids_json" \
         '.rules |= (to_entries | map(select(.key as $k | ($ids | index($k)) == null)) | map(.value))' <<<"$doc")"
-      echo "Rule removed: $host"
+      echo "Rule removed: ${host:-$raw_host}"
       ;;
     *)
       fail "rules: unknown subcommand: $sub"

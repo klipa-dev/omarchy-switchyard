@@ -95,19 +95,25 @@ fi
 switchyard_run_launch "$target" "$url" "$fallback_file" "${flags[@]}"
 
 # $SWITCHYARD_MISSING_TARGET means the resolved desktop id has no desktop
-# entry. Retry with the fallback browser as a normal window, unless the
-# target already is the fallback (then there is truly no browser to fall
-# back to).
+# entry, or is Switchyard's own (refused rather than launched; see
+# lib/launch.sh). Retry with the fallback browser as a normal window, unless
+# the target already is the fallback (then there is truly no browser to
+# fall back to).
 if [[ $launch_status -eq $SWITCHYARD_MISSING_TARGET ]]; then
   fallback_desktop_id=$(_switchyard_fallback "$fallback_file")
   if [[ $target != "$fallback_desktop_id" ]]; then
-    missing_id=${launch_stderr#switchyard: no desktop entry for }
-    notice="Switchyard: $missing_id is not installed, opening in $fallback_desktop_id"
-    command -v omarchy-notification-send >/dev/null 2>&1 && omarchy-notification-send "$notice" || true
-    printf '%s\n' "$notice" >&2
+    if [[ $launch_stderr == *"refusing to launch Switchyard itself"* ]]; then
+      # Already explained on stderr by lib/launch.sh; no further notice.
+      reason="fallback:self"
+    else
+      missing_id=${launch_stderr#switchyard: no desktop entry for }
+      notice="Switchyard: $missing_id is not installed, opening in $fallback_desktop_id"
+      command -v omarchy-notification-send >/dev/null 2>&1 && omarchy-notification-send "$notice" || true
+      printf '%s\n' "$notice" >&2
+      reason="fallback:missing-target"
+    fi
 
     target=$fallback_desktop_id
-    reason="fallback:missing-target"
 
     switchyard_run_launch "$target" "$url" "$fallback_file" "${flags[@]}"
   fi
@@ -123,7 +129,11 @@ if [[ ${SWITCHYARD_DRY_RUN:-0} != 1 ]] && [[ $launch_status -ne $SWITCHYARD_MISS
   mkdir -p "$state_dir"
   log_file="$state_dir/log"
   timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  printf '%s\t%s\t%s\t%s\n' "$timestamp" "$url" "$target" "$reason" >>"$log_file"
+  # The host only, never the full link: a query string can carry a
+  # magic-login token. "-" when the URL has none (a bare `open` with no
+  # URL) or isn't http(s) at all.
+  log_host=$(_switchyard_host "$url") || log_host="-"
+  printf '%s\t%s\t%s\t%s\n' "$timestamp" "$log_host" "$target" "$reason" >>"$log_file"
   tmp_log=$(mktemp "$state_dir/log.XXXXXX")
   tail -n 200 "$log_file" >"$tmp_log"
   mv "$tmp_log" "$log_file"

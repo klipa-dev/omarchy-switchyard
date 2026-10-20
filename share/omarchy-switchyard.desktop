@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Switchyard
-Comment=Opens each link in the browser your rules choose
+Comment=Opens the sites you choose as web apps, and everything else in your usual browser
 Exec=__HANDLER__ %u
 Icon=web-browser
 Terminal=false

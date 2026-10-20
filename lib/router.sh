@@ -54,12 +54,15 @@ _switchyard_desktop_entry() {
 }
 
 # _switchyard_fallback <fallback-file> — the fallback browser's desktop id.
+# A fallback file (or xdg-settings default) naming Switchyard's own desktop
+# id is skipped, falling through to the next source, so a hand-edited
+# fallback file can never point the handler at itself.
 _switchyard_fallback() {
   local fallback_file=$1 fallback=""
 
   if [[ -f $fallback_file ]]; then
     IFS= read -r fallback <"$fallback_file" || true
-    if [[ -n $fallback ]]; then
+    if [[ -n $fallback && $fallback != "omarchy-switchyard.desktop" ]]; then
       printf '%s\n' "$fallback"
       return 0
     fi
