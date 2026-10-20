@@ -83,30 +83,24 @@ Switchyard reads `~/.config/omarchy-switchyard/rules.json`. Copy
 }
 ```
 
-Each clicked link is matched against `rules` in order; the first rule whose
-`host` fits wins. `host` is the link's host, lowercased, with any
-`user:pass@`, port, path and query removed; only `http` and `https` links
-have a host, so anything else (`mailto:`, a bare word, ...) always falls
-through. A host covers the site and all its subdomains: `basecamp.com` and
-`*.basecamp.com` are the same rule, and both match `basecamp.com`,
-`www.basecamp.com` and any other subdomain; there's no way to match a host
-and exclude its subdomains.
+Each clicked link is matched against `rules` in order, and the first rule
+whose `host` fits wins; only `http` and `https` links have a host, so
+anything else (`mailto:`, a bare word, ...) always falls through. A host
+covers the site and all its subdomains: `basecamp.com` and `*.basecamp.com`
+are the same rule, and both match `www.basecamp.com` too, so there's no way
+to match a host and exclude its subdomains.
 
-`target` is the word `webapp`, which opens the link as a browser window with
-no address bar or tabs, the way an installed web app does, or a desktop id
-(`chromium.desktop`, `zen.desktop`, ...), which opens the link in that
-browser's ordinary window instead. The browser behind `webapp` is whichever
-Chromium-family browser Switchyard resolves itself: the fallback browser
-below, if it is Chromium-family, otherwise `chromium.desktop` — not
-necessarily the fallback browser itself.
+`target` is the word `webapp`, which opens the link as a browser window
+with no address bar or tabs, the way an installed web app does, or a
+desktop id (`chromium.desktop`, `zen.desktop`, ...), which opens the link
+in that browser's ordinary window instead. The browser behind `webapp` is
+whichever Chromium-family browser Switchyard resolves itself: the fallback
+browser below, if it is Chromium-family, otherwise `chromium.desktop`.
 
-A link that matches no rule goes to the fallback browser: the single
-desktop id in `~/.config/omarchy-switchyard/fallback`, which `activate`
-writes from your current default browser (so a broken or missing
-`rules.json` can never lose it; a missing or invalid `rules.json` just
-means every link goes to the fallback, with a notification if the file is
-invalid). A rule whose browser isn't installed behaves the same way: the
-link opens in the fallback browser instead, with a notification.
+A link that matches no rule goes to the fallback browser: the desktop id
+`activate` recorded from your current default browser. A missing
+`rules.json` falls back the same way, silently; an invalid one, or a rule
+whose browser isn't installed, falls back with a notification.
 
 ### Editing rules from the command line
 
@@ -122,13 +116,8 @@ omarchy-switchyard browsers [--json]               # list installed browsers
 
 `<host>` can be a bare host (`youtube.com`), a `*.`-prefixed one
 (`*.youtube.com`), or a full URL (`https://www.youtube.com/watch?v=x`);
-`rules add` normalises whatever you type to the canonical `*.<host>` form —
-lowercased, with any scheme, `user:pass@`, port, path and query stripped,
-and a leading `www.` dropped — so `youtube.com`, `www.youtube.com`,
-`*.www.youtube.com` and that URL all save as `*.youtube.com`. It also
-checks that `<target>` is `webapp` or a desktop id that actually resolves
-to an installed application, before writing. Each command prints what it
-did:
+whatever you type is normalised and saved as `*.<host>`, stripping a
+leading `*.` or `www.` first. Each command prints what it did:
 
 ```
 Rule added: *.youtube.com → webapp
@@ -138,25 +127,15 @@ Rule unchanged: *.youtube.com → webapp
 Rule removed: *.youtube.com
 ```
 
-The parenthetical lists, in full and in the order they appeared in the
-file, every existing rule the write replaced (`<host> → <target>`, comma
-separated if there was more than one — a leftover file can hold several
-entries that all normalise to the same host). `Rule unchanged` only fires
-when exactly one existing rule already matched both the canonical host and
-the target you asked for; anything else that touches an existing rule,
-including a host-form-only rewrite, is a `Rule changed`.
+When what you typed is not already in that form, a second line says what
+was saved: `Saved as *.youtube.com, which matches youtube.com and all its
+subdomains.`
 
-When the host you typed isn't already in the canonical form, `rules add`
-prints a second line: `Saved as *.youtube.com, which matches youtube.com
-and all its subdomains.` Adding a rule for a host that already has one
-(typed any way that normalises the same) replaces it in place; `rules
-remove` compares the same way and fails if there is no rule for that host.
-`browsers` lists every installed browser's desktop id and name, which is
-useful for picking a `<target>` or a fallback. None of these commands touch
-your rules file if the host, target or desktop id is invalid, and none of
-them ever hand-edit `rules.json`: each writes the whole file atomically. If
-`rules.json` itself is invalid JSON, every command that would otherwise
-write to it fails instead, telling you the file to fix by hand.
+A `Rule changed` lists, in the parenthetical, every existing rule the
+write replaced. `browsers` lists every installed browser's desktop id and
+name, useful for picking a `<target>` or a fallback. If `rules.json` is
+invalid, every `rules` command fails, `rules list` included, and names the
+file to fix by hand.
 
 ## Command reference
 
@@ -184,16 +163,19 @@ the last few lines of the routing log, which `omarchy-switchyard` keeps at
 
 ## Settings panel
 
-A summoned panel inside `omarchy-shell` shows the same status the CLI does
-(active or not, the fallback browser) and your configured rules, each as
-`<host> → <target>` (a `webapp` target shows as "Web app window"). An
-"Activate" / "Deactivate" button toggles the plugin, and "Open rules file"
-opens `rules.json` in your editor. You can also add, edit and remove rules
-and pick the fallback browser from the panel itself, each from a dropdown
-of your installed browsers; "Edit" fills in a rule's host and target so
-"Add" can replace it, and "Remove" asks you to confirm first. The panel
-never edits `rules.json` itself; every change runs through the CLI, so the
-panel and the command line stay in sync.
+A summoned panel inside `omarchy-shell` shows whether Switchyard is active,
+with a switch to turn it on or off, and names the browser unmatched links
+open in right now. A "Fallback browser" dropdown picks the browser
+unmatched links open in while Switchyard is active. While it is inactive
+the panel shows your OS default instead, and turning Switchyard on
+records whatever is default then, so pick the fallback after turning it
+on. Below it is your rules list, each rule with icon buttons to edit or
+remove it (removing asks you to confirm first). One add row — a host
+field, a target dropdown and an icon button — adds a new rule, or
+replaces one after Edit fills the row; "Open rules file" opens
+`rules.json` in your editor. The panel never edits `rules.json` itself:
+every change runs through the CLI, so the panel and the command line
+stay in sync.
 
 Summon it with:
 
