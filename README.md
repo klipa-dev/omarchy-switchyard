@@ -9,6 +9,8 @@ installed web app looks. Switchyard lets you say which sites get that
 treatment, and which browser the rest should open in, then takes over as
 the system's link handler so every click just goes to the right place.
 
+![The Switchyard settings panel](docs/panel.png)
+
 ## Why you'd want it
 
 - A meeting link or a Basecamp task shared in chat opens as its own app
@@ -166,9 +168,10 @@ reason, never the full link (a query string can carry a magic-login token).
 
 ## Settings panel
 
-A summoned panel inside `omarchy-shell` shows whether Switchyard is active,
-with a switch to turn it on or off, and names the browser unmatched links
-open in right now. A "Fallback browser" dropdown picks the browser
+The panel pictured at the top of this README is summoned inside
+`omarchy-shell`. It shows whether Switchyard is active, with a switch to
+turn it on or off, and names the browser unmatched links open in right
+now. A "Fallback browser" dropdown picks the browser
 unmatched links open in while Switchyard is active. While it is inactive
 the panel shows your OS default instead; turning Switchyard on keeps the
 fallback you already picked, recording your OS default only the first
