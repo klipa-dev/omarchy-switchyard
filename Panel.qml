@@ -53,6 +53,16 @@ Item {
 
   property var rules: []
 
+  // Shared grid for every rule row and the add row below it, so all three
+  // columns (host, target, actions) land on the same x position and the
+  // same height in every row: a fixed row height instead of one driven by
+  // each row's own text metrics, one PanelActionButton size for all three
+  // buttons in the file, and one target-column width shared by RuleRow's
+  // target cell and the add row's target Dropdown.
+  readonly property int ruleRowHeight: Style.spacing.controlHeight
+  readonly property int ruleActionButtonSize: Style.spacing.controlHeight
+  readonly property int ruleTargetColumnWidth: Style.space(150)
+
   // Browsers known to the system, loaded fresh each time the panel opens
   // (`browsers --json`): [{id, name}, ...]. Feeds both dropdowns below.
   property var browsers: []
@@ -553,7 +563,7 @@ Item {
             Item {
               id: addRow
               width: parent.width
-              height: Math.max(hostField.implicitHeight, targetDropdown.implicitHeight, addButton.implicitHeight)
+              height: root.ruleRowHeight
 
               TextField {
                 id: hostField
@@ -561,6 +571,8 @@ Item {
                 anchors.right: targetDropdown.left
                 anchors.rightMargin: Style.space(8)
                 anchors.verticalCenter: parent.verticalCenter
+                height: root.ruleRowHeight
+                verticalPadding: Style.spacing.controlPaddingY
                 placeholderText: "youtube.com"
                 onAccepted: root.addRule()
               }
@@ -570,7 +582,8 @@ Item {
                 anchors.right: addButton.left
                 anchors.rightMargin: Style.space(8)
                 anchors.verticalCenter: parent.verticalCenter
-                width: Style.space(140)
+                width: root.ruleTargetColumnWidth
+                rowHeight: root.ruleRowHeight
                 showLabel: false
                 value: "webapp"
                 options: root.targetOptions
@@ -580,7 +593,7 @@ Item {
                 id: addButton
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                size: Style.spacing.controlHeight
+                size: root.ruleActionButtonSize
                 bordered: true
                 iconText: "󰐕"
                 tooltipText: "Add rule"
@@ -648,7 +661,11 @@ Item {
     required property string host
     required property string target
 
-    height: Math.max(hostText.implicitHeight, actions.implicitHeight)
+    // Fixed, not Math.max of this row's own text metrics: a taller glyph
+    // or an elided-vs-not label used to make one row a few pixels taller
+    // than its neighbor, so the actions column drifted off the grid from
+    // one row to the next.
+    height: root.ruleRowHeight
 
     Text {
       id: hostText
@@ -672,8 +689,8 @@ Item {
       anchors.right: actions.left
       anchors.rightMargin: Style.space(8)
       anchors.verticalCenter: parent.verticalCenter
-      width: Style.space(150)
-      height: Math.max(targetGlyphText.implicitHeight, targetLabelText.implicitHeight)
+      width: root.ruleTargetColumnWidth
+      height: parent.height
 
       Text {
         id: targetGlyphText
@@ -708,6 +725,7 @@ Item {
       spacing: Style.space(4)
 
       PanelActionButton {
+        size: root.ruleActionButtonSize
         iconText: "󰏫"
         tooltipText: "Edit"
         foreground: Color.foreground
@@ -715,6 +733,7 @@ Item {
       }
 
       PanelActionButton {
+        size: root.ruleActionButtonSize
         iconText: "󰅙"
         tooltipText: "Remove"
         foreground: Color.foreground
